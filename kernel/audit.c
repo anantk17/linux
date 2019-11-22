@@ -23,7 +23,7 @@
  *
  * Goals: 1) Integrate fully with Security Modules.
  *	  2) Minimal run-time overhead:
- *	     a) Minimal when syscall auditing is disabled (audit_enable=0).
+ *	     a) Minimal when syscall auditing is disabled (enable=0).
  *	     b) Small when syscall auditing is enabled and no audit record
  *		is generated (defer as much work as possible to record
  *		generation time):
@@ -861,6 +861,8 @@ static int kauditd_thread(void *dummy)
 		}
 
 main_queue:
+		//REMOVE_THIS_PRINTK
+		pr_notice("kauditd_thread processing msg from audit_queue\n")
 		/* process the main queue - do the multicast send and attempt
 		 * unicast, dump failed record sends to the retry queue; if
 		 * sk == NULL due to previous failures we will just do the
@@ -881,6 +883,9 @@ main_queue:
 
 		/* we have processed all the queues so wake everyone */
 		wake_up(&audit_backlog_wait);
+
+		//REMOVE_THIS_PRINTK
+		pr_notice("Is kauditd_thread going to sleep now? : %d\n", !(skb_queue_len(&audit_queue) ? 1 : 0))
 
 		/* NOTE: we want to wake up if there is anything on the queue,
 		 *       regardless of if an auditd is connected, as we need to
@@ -1767,6 +1772,8 @@ struct audit_buffer *audit_log_start(struct audit_context *ctx, gfp_t gfp_mask,
 		while (audit_backlog_limit &&
 		       (skb_queue_len(&audit_queue) > audit_backlog_limit)) {
 			/* wake kauditd to try and flush the queue */
+			//REMOVE_THIS_PRINTK
+			pr_notice("Trying to signal kauditd from log_start for process id : %d\n",ctx->pid);
 			wake_up_interruptible(&kauditd_wait);
 
 			/* sleep if we are allowed and we haven't exhausted our
@@ -1776,6 +1783,8 @@ struct audit_buffer *audit_log_start(struct audit_context *ctx, gfp_t gfp_mask,
 
 				add_wait_queue_exclusive(&audit_backlog_wait,
 							 &wait);
+				//REMOVE_THIS_PRINTK
+				pr_notice("Going to sleep for time %ld, blocking process id : %d\n",stime,ctx->pid);
 				set_current_state(TASK_UNINTERRUPTIBLE);
 				stime = schedule_timeout(stime);
 				remove_wait_queue(&audit_backlog_wait, &wait);
@@ -2350,6 +2359,8 @@ void audit_log_end(struct audit_buffer *ab)
 
 		/* queue the netlink packet and poke the kauditd thread */
 		skb_queue_tail(&audit_queue, skb);
+		//REMOVE_THIS_PRINTK
+		pr_notice("sending a new audit message, signalling kauditd_thread for process id : %d\n",ab->ctx->pid)
 		wake_up_interruptible(&kauditd_wait);
 	} else
 		audit_log_lost("rate limit exceeded");
