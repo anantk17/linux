@@ -861,8 +861,8 @@ static int kauditd_thread(void *dummy)
 		}
 
 main_queue:
-		//REMOVE_THIS_PRINTK
-		pr_notice("kauditd_thread processing msg from audit_queue\n");
+		//REMOVE_THIS_PRINTK 
+		pr_notice("kauditd_thread processing msg from audit_queue, length of msgs : %d\n",skb_queue_len(&audit_queue));
 		/* process the main queue - do the multicast send and attempt
 		 * unicast, dump failed record sends to the retry queue; if
 		 * sk == NULL due to previous failures we will just do the
@@ -885,6 +885,7 @@ main_queue:
 		wake_up(&audit_backlog_wait);
 
 		//REMOVE_THIS_PRINTK
+		//Time between previous and this message would give us the time it takes to push batch over the netlink
 		pr_notice("Is kauditd_thread going to sleep now?\n");
 
 		/* NOTE: we want to wake up if there is anything on the queue,
