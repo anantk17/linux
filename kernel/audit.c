@@ -735,7 +735,7 @@ static int kauditd_send_queue(struct sock *sk, u32 portid,
 	pr_notice("kauditd_thread processing msg from queue, length of msgs : %d\n",skb_queue_len(&audit_queue));
 	while ((skb = skb_dequeue(queue))) {
 		//ADD LOG TO COUNT SENDING ONE MESSAGE
-		pr_notice("sending a message over netlink to auditd\n")
+		pr_notice("sending a message over netlink to auditd\n");
 		/* call the skb_hook for each skb we touch */
 		if (skb_hook)
 			(*skb_hook)(skb);
@@ -767,7 +767,7 @@ static int kauditd_send_queue(struct sock *sk, u32 portid,
 				skb_queue_head(queue, skb);
 		} else {
 			/* it worked - drop the extra reference and continue */
-			pr_notice("netlink send successful\n")
+			pr_notice("netlink send successful\n");
 			consume_skb(skb);
 			failed = 0;
 		}
