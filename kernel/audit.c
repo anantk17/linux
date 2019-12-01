@@ -2371,7 +2371,7 @@ void audit_log_end(struct audit_buffer *ab)
 		/* queue the netlink packet and poke the kauditd thread */
 		skb_queue_tail(&audit_queue, skb);
 		//REMOVE_THIS_PRINTK
-		pr_notice("sending a new audit message, signalling kauditd_thread for process id\n");
+		pr_notice("sending a new audit message, signalling kauditd_thread for process id\n,type : %d",nlh->nlmsg_type);
 		wake_up_interruptible(&kauditd_wait);
 	} else
 		audit_log_lost("rate limit exceeded");
