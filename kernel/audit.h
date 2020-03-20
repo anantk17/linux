@@ -214,7 +214,7 @@ struct audit_context {
 	};
 	int fds[2];
 	struct audit_proctitle proctitle;
-	struct audit_template_entry *curr_template_list_pos;
+	struct list_head *curr_template_list_pos;
 };
 
 extern bool audit_ever_enabled;
