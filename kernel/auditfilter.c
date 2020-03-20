@@ -917,26 +917,32 @@ out:
 static u64 prio_low = ~0ULL/2;
 static u64 prio_high = ~0ULL/2 - 1;
 
-static struct audit_template_entry* create_audit_template_entry(int syscall_number){
+static void create_audit_template_entry(int syscall_number){
 	struct audit_template_entry *new_elem = kmalloc(sizeof(struct audit_template_entry),GFP_KERNEL);
 	new_elem->syscallNumber = syscall_number;
 	INIT_LIST_HEAD(&(new_elem->list));
 	list_add_tail(&(new_elem->list),&known_audit_seq);
 }
 
-static void setup_audit_template(void){
-	int audit_sequence[] = {__NR_execve,__NR_openat,__NR_close,__NR_openat,__NR_read,__NR_close,__NR_openat,__NR_close,__NR_openat,__NR_read,__NR_close,__NR_openat,__NR_write};
+static void setup_audit_template(void)
+{
+	int audit_sequence[] = { __NR_execve, __NR_openat, __NR_close,
+				 __NR_openat, __NR_read,   __NR_close,
+				 __NR_openat, __NR_close,  __NR_openat,
+				 __NR_read,   __NR_close,  __NR_openat,
+				 __NR_write };
 	int i = 0;
 	struct list_head *position;
 	struct audit_template_entry *entry;
 
-	for(; i < ARRAY_SIZE(audit_sequence);i++){
+	for (; i < ARRAY_SIZE(audit_sequence); i++) {
 		create_audit_template_entry(audit_sequence[i]);
 	}
 
-	list_for_each(position, &known_audit_seq){
+	list_for_each (position, &known_audit_seq) {
 		entry = list_entry(position, struct audit_template_entry, list);
-		printk("syscall in audit_template : %px %d\n",entry,entry->syscallNumber);
+		printk("syscall in audit_template : %px %d\n", entry,
+		       entry->syscallNumber);
 	}
 }
 
