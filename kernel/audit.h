@@ -126,6 +126,7 @@ struct audit_context {
 	long		    return_code;/* syscall return code */
 	u64		    prio;
 	int		    return_valid; /* return code is valid */
+	struct list_head *curr_template_list_pos;
 	/*
 	 * The names_list is the list of all audit_names collected during this
 	 * syscall.  The first AUDIT_NAMES entries in the names_list will
@@ -214,7 +215,6 @@ struct audit_context {
 	};
 	int fds[2];
 	struct audit_proctitle proctitle;
-	struct list_head *curr_template_list_pos;
 };
 
 extern bool audit_ever_enabled;
