@@ -1417,6 +1417,44 @@ unlock_and_return:
 	return ret;
 }
 
+bool update_template_ptr(struct audit_context *ctx,
+			 struct list_head *curr_template_ptr)
+{
+	//we need to take care not to set the template ptr back to the head,
+	//that wouldn't make any sense.
+	if (curr_template_ptr == &known_audit_seq || curr_template_ptr <= 0 ||
+	    curr_template_ptr == NULL) {
+		return false;
+	}
+	ctx->curr_template_list_pos = curr_template_ptr;
+	return true;
+}
+
+bool set_template_ptr_to_start(struct audit_context *ctx)
+{
+	//!!!A potential issue might be that we might wrap around the entire sequence,
+	//and start off at the beginning -> handled in update_template_ptr
+	if (ctx->curr_template_list_pos == &known_audit_seq) {
+		//if we are at the head of the list, we need to move to the
+		//first element before beginning out checks
+		ctx->curr_template_list_pos =
+			(ctx->curr_template_list_pos)->next;
+		//if we end up at a null pointer or at the head again,
+		//that means we haven't setup the template correctly
+		if (ctx->curr_template_list_pos == NULL ||
+		    ctx->curr_template_list_pos == &known_audit_seq) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool match_audit_template_event(struct audit_template_entry *curr_event,
+				struct audit_context *ctx)
+{
+	return (curr_event->syscallNumber == ctx->major);
+}
+
 bool audit_filter_template(int msgtype, struct audit_context *ctx)
 {
 	struct list_head *curr_event_ptr;
@@ -1426,22 +1464,27 @@ bool audit_filter_template(int msgtype, struct audit_context *ctx)
 	    ctx->curr_template_list_pos == NULL) {
 		return false;
 	}
-	if (ctx->curr_template_list_pos == &known_audit_seq) {
-		//if we are at the head of the list, we need to move to the
-		//first element before beginning out checks
-		ctx->curr_template_list_pos = (ctx->curr_template_list_pos)->next;
-		//if we end up at a null pointer or at the head again,
-		//that means we haven't setup the template correctly
-		if (ctx->curr_template_list_pos == NULL || ctx->curr_template_list_pos == &known_audit_seq) {
-			return false;
-		}
-	}
 
-	curr_event_ptr = ctx->curr_template_list_pos;
-	exp_curr_event = list_entry(curr_event_ptr, struct audit_template_entry, list);
-	if (exp_curr_event->syscallNumber == ctx->major) {
-		printk("syscall number %d matched", exp_curr_event->syscallNumber);
-		return true;
+	if (set_template_ptr_to_start(ctx)) {
+		curr_event_ptr = ctx->curr_template_list_pos;
+		exp_curr_event = list_entry(curr_event_ptr,
+					    struct audit_template_entry, list);
+		//if we match the syscall directly, then we are good,
+		//we remain at the same position, to account for repetitions
+		if (match_audit_template_event(exp_curr_event, ctx)) {
+			return true;
+		} //otherwise, we want to go check the next syscall in the sequence
+		else {
+			//printk("syscall didn't match on the first attempt, we will move forward");
+			curr_event_ptr = (curr_event_ptr)->next;
+			exp_curr_event =
+				list_entry(curr_event_ptr,
+					   struct audit_template_entry, list);
+			//update context with current pointer, 
+			//this needs to happen even if match doesn't happen
+			update_template_ptr(ctx, curr_event_ptr);
+			return match_audit_template_event(exp_curr_event, ctx);
+		}
 	}
 	return false;
 }
