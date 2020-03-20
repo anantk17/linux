@@ -1384,6 +1384,23 @@ unlock_and_return:
 	return ret;
 }
 
+bool audit_filter_template(int msgtype, struct audit_context *ctx)
+{
+	if (msgtype != AUDIT_SYSCALL || !(ctx->in_syscall) || ctx == NULL ||
+	    ctx->curr_template_list_pos == NULL)
+		return false;
+
+	struct list_head *curr_event_ptr = ctx->curr_template_list_pos;
+	struct audit_template_entry *exp_curr_event =
+		list_entry(curr_event_ptr, struct audit_template_entry, list);
+	
+	if(exp_curr_event->syscallNumber == ctx->major){
+		printk("syscall number matched");
+		return true;
+	}
+	return false;
+}
+
 static int update_lsm_rule(struct audit_krule *r)
 {
 	struct audit_entry *entry = container_of(r, struct audit_entry, rule);

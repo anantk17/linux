@@ -106,6 +106,14 @@ struct audit_proctitle {
 	char	*value;	/* the cmdline field */
 };
 
+struct audit_template_entry{
+	int syscallNumber;
+
+	struct list_head list;
+};
+
+extern struct list_head known_audit_seq;
+
 /* The per-task audit context. */
 struct audit_context {
 	int		    dummy;	/* must be the first element */
@@ -206,6 +214,7 @@ struct audit_context {
 	};
 	int fds[2];
 	struct audit_proctitle proctitle;
+	struct audit_template_entry *curr_template_list_pos;
 };
 
 extern bool audit_ever_enabled;
@@ -331,6 +340,7 @@ extern kuid_t audit_sig_uid;
 extern u32 audit_sig_sid;
 
 extern int audit_filter(int msgtype, unsigned int listtype);
+extern bool audit_filter_template(int msgtype, struct audit_context *ctx);
 
 #ifdef CONFIG_AUDITSYSCALL
 extern int audit_signal_info(int sig, struct task_struct *t);

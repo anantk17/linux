@@ -216,6 +216,22 @@ struct audit_reply {
 	struct sk_buff *skb;
 };
 
+LIST_HEAD(known_audit_seq);
+
+static void setup_audit_template(void){
+	struct audit_template_entry first;
+	struct audit_template_entry *entry = NULL;
+
+	INIT_LIST_HEAD(&first.list);
+	list_add_tail(&first.list,&known_audit_seq);
+
+	struct list_head *position;
+	list_for_each(position, &known_audit_seq){
+		entry = list_entry(position, struct audit_template_entry, list);
+		printk("syscall in audit_template : %d\n",entry->syscallNumber);
+	}
+}
+
 /**
  * auditd_test_task - Check to see if a given task is an audit daemon
  * @task: the task to check
@@ -1606,6 +1622,15 @@ static int __init audit_init(void)
 	audit_log(NULL, GFP_KERNEL, AUDIT_KERNEL,
 		"state=initialized audit_enabled=%u res=1",
 		 audit_enabled);
+
+	printk("Setting up audit templates");
+
+	setup_audit_template();
+
+	audit_log(NULL,GFP_KERNEL,AUDIT_CONFIG_CHANGE,
+		"audit_templating_enabled %px",&known_audit_seq);
+	
+	printk("Audit templating enabled : %px",&known_audit_seq);
 
 	return 0;
 }
