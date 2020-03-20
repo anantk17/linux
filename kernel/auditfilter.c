@@ -917,11 +917,13 @@ out:
 static u64 prio_low = ~0ULL/2;
 static u64 prio_high = ~0ULL/2 - 1;
 
-static void create_audit_template_entry(int syscall_number){
-	struct audit_template_entry *new_elem = kmalloc(sizeof(struct audit_template_entry),GFP_KERNEL);
+static void create_audit_template_entry(int syscall_number)
+{
+	struct audit_template_entry *new_elem =
+		kmalloc(sizeof(struct audit_template_entry), GFP_KERNEL);
 	new_elem->syscallNumber = syscall_number;
 	INIT_LIST_HEAD(&(new_elem->list));
-	list_add_tail(&(new_elem->list),&known_audit_seq);
+	list_add_tail(&(new_elem->list), &known_audit_seq);
 }
 
 static void setup_audit_template(void)
