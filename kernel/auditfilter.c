@@ -941,11 +941,15 @@ static void setup_audit_template(void)
 		create_audit_template_entry(audit_sequence[i]);
 	}
 
+	printk("audit seq list head %px ",&known_audit_seq);
+
 	list_for_each (position, &known_audit_seq) {
 		entry = list_entry(position, struct audit_template_entry, list);
 		printk("syscall in audit_template : %px %d\n", entry,
 		       entry->syscallNumber);
 	}
+
+	printk("last template entry %px",known_audit_seq.prev);
 }
 
 /* Add rule to given filterlist if not a duplicate. */
@@ -1455,6 +1459,15 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 	return (curr_event->syscallNumber == ctx->major);
 }
 
+void log_if_end_of_template(struct list_head *curr_event_ptr)
+{	
+	//printk("checking if we are at the end of the line %px %px",curr_event_ptr, curr_event_ptr->next);
+	if (curr_event_ptr->next == &known_audit_seq) {
+		audit_log(NULL, GFP_KERNEL, AUDIT_CONFIG_CHANGE,
+			  "template processing finished");
+	}
+}
+
 bool audit_filter_template(int msgtype, struct audit_context *ctx)
 {
 	struct list_head *curr_event_ptr;
@@ -1472,6 +1485,7 @@ bool audit_filter_template(int msgtype, struct audit_context *ctx)
 		//if we match the syscall directly, then we are good,
 		//we remain at the same position, to account for repetitions
 		if (match_audit_template_event(exp_curr_event, ctx)) {
+			log_if_end_of_template(curr_event_ptr);
 			return true;
 		} //otherwise, we want to go check the next syscall in the sequence
 		else {
@@ -1483,7 +1497,12 @@ bool audit_filter_template(int msgtype, struct audit_context *ctx)
 			//update context with current pointer, 
 			//this needs to happen even if match doesn't happen
 			update_template_ptr(ctx, curr_event_ptr);
-			return match_audit_template_event(exp_curr_event, ctx);
+			if (match_audit_template_event(exp_curr_event, ctx)){
+				log_if_end_of_template(curr_event_ptr);
+				return true;
+			}
+			//if we know we have gone around the template once, 
+			//we should send out a log that says that
 		}
 	}
 	return false;
