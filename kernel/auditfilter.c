@@ -71,6 +71,8 @@ static struct list_head audit_rules_list[AUDIT_NR_FILTERS] = {
 	LIST_HEAD_INIT(audit_rules_list[6]),
 };
 
+LIST_HEAD(known_audit_seq);
+
 DEFINE_MUTEX(audit_filter_mutex);
 
 static void audit_free_lsm_field(struct audit_field *f)
@@ -915,6 +917,29 @@ out:
 static u64 prio_low = ~0ULL/2;
 static u64 prio_high = ~0ULL/2 - 1;
 
+static struct audit_template_entry* create_audit_template_entry(int syscall_number){
+	struct audit_template_entry *new_elem = kmalloc(sizeof(struct audit_template_entry),GFP_KERNEL);
+	new_elem->syscallNumber = syscall_number;
+	INIT_LIST_HEAD(&(new_elem->list));
+	list_add_tail(&(new_elem->list),&known_audit_seq);
+}
+
+static void setup_audit_template(void){
+	int audit_sequence[] = {__NR_execve,__NR_openat,__NR_close,__NR_openat,__NR_read,__NR_close,__NR_openat,__NR_close,__NR_openat,__NR_read,__NR_close,__NR_openat,__NR_write};
+	int i = 0;
+	struct list_head *position;
+	struct audit_template_entry *entry;
+
+	for(; i < ARRAY_SIZE(audit_sequence);i++){
+		create_audit_template_entry(audit_sequence[i]);
+	}
+
+	list_for_each(position, &known_audit_seq){
+		entry = list_entry(position, struct audit_template_entry, list);
+		printk("syscall in audit_template : %px %d\n",entry,entry->syscallNumber);
+	}
+}
+
 /* Add rule to given filterlist if not a duplicate. */
 static inline int audit_add_rule(struct audit_entry *entry)
 {
@@ -934,7 +959,7 @@ static inline int audit_add_rule(struct audit_entry *entry)
 		dont_count = 1;
 	}
 #endif
-
+	setup_audit_template();
 	mutex_lock(&audit_filter_mutex);
 	e = audit_find_rule(entry, &list);
 	if (e) {
@@ -1391,38 +1416,25 @@ bool audit_filter_template(int msgtype, struct audit_context *ctx)
 
 	if (msgtype != AUDIT_SYSCALL || !(ctx->in_syscall) || ctx == NULL ||
 	    ctx->curr_template_list_pos == NULL) {
-		printk("sanity checks failed");
 		return false;
 	}
-	/* if (ctx->curr_template_list_pos == &known_audit_seq) {
+	if (ctx->curr_template_list_pos == &known_audit_seq) {
 		//if we are at the head of the list, we need to move to the
 		//first element before beginning out checks
-		printk("on the head of seq, need to go to the first element %px %px",
-		       ctx->curr_template_list_pos,
-		       (ctx->curr_template_list_pos)->next);
 		ctx->curr_template_list_pos = (ctx->curr_template_list_pos)->next;
-		if (ctx->curr_template_list_pos == NULL) {
+		//if we end up at a null pointer or at the head again,
+		//that means we haven't setup the template correctly
+		if (ctx->curr_template_list_pos == NULL || ctx->curr_template_list_pos == &known_audit_seq) {
 			return false;
 		}
-	} */
-	printk("Iterating over known audit sequence");
-	list_for_each(curr_event_ptr, &known_audit_seq){
-		exp_curr_event = list_entry(curr_event_ptr, struct audit_template_entry, list);
-		printk("syscall in audit_template : %px %d\n",exp_curr_event,exp_curr_event->syscallNumber);
 	}
 
-	/* ist_for_each (curr_event_ptr, ctx->curr_template_list_pos) {
-		exp_curr_event = list_entry(curr_event_ptr,
-					    struct audit_template_entry, list);
-		printk("syscall being checked %d %d ",
-		       exp_curr_event->syscallNumber, ctx->major);
-		if (exp_curr_event->syscallNumber == ctx->major) {
-			printk("syscall number %d matched",
-			       exp_curr_event->syscallNumber);
-			return true;
-		}
-	} */
-
+	curr_event_ptr = ctx->curr_template_list_pos;
+	exp_curr_event = list_entry(curr_event_ptr, struct audit_template_entry, list);
+	if (exp_curr_event->syscallNumber == ctx->major) {
+		printk("syscall number %d matched", exp_curr_event->syscallNumber);
+		return true;
+	}
 	return false;
 }
 
