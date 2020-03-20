@@ -63,7 +63,7 @@
 #include <linux/slab.h>
 
 #include <linux/audit.h>
-
+#include <asm/unistd-common.h>
 #include <net/sock.h>
 #include <net/netlink.h>
 #include <linux/skbuff.h>
@@ -223,11 +223,12 @@ static void setup_audit_template(void){
 	struct audit_template_entry *entry = NULL;
 	struct list_head *position;
 
+	first.syscallNumber = __NR_execve;
 	INIT_LIST_HEAD(&first.list);
 	list_add_tail(&first.list,&known_audit_seq);
 	list_for_each(position, &known_audit_seq){
 		entry = list_entry(position, struct audit_template_entry, list);
-		printk("syscall in audit_template : %d\n",entry->syscallNumber);
+		printk("syscall in audit_template : %px %d\n",entry,entry->syscallNumber);
 	}
 }
 
@@ -1774,6 +1775,11 @@ struct audit_buffer *audit_log_start(struct audit_context *ctx, gfp_t gfp_mask,
 
 	if (audit_initialized != AUDIT_INITIALIZED)
 		return NULL;
+	
+	if(audit_filter_template(type,ctx)){
+		printk("syscall matched");
+		return NULL;
+	}
 
 	if (unlikely(!audit_filter(type, AUDIT_FILTER_EXCLUDE)))
 		return NULL;

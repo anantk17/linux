@@ -1390,17 +1390,39 @@ bool audit_filter_template(int msgtype, struct audit_context *ctx)
 	struct audit_template_entry *exp_curr_event;
 
 	if (msgtype != AUDIT_SYSCALL || !(ctx->in_syscall) || ctx == NULL ||
-	    ctx->curr_template_list_pos == NULL)
+	    ctx->curr_template_list_pos == NULL) {
+		printk("sanity checks failed");
 		return false;
-
-	curr_event_ptr = ctx->curr_template_list_pos;
-	exp_curr_event =
-		list_entry(curr_event_ptr, struct audit_template_entry, list);
-
-	if(exp_curr_event->syscallNumber == ctx->major){
-		printk("syscall number matched");
-		return true;
 	}
+	/* if (ctx->curr_template_list_pos == &known_audit_seq) {
+		//if we are at the head of the list, we need to move to the
+		//first element before beginning out checks
+		printk("on the head of seq, need to go to the first element %px %px",
+		       ctx->curr_template_list_pos,
+		       (ctx->curr_template_list_pos)->next);
+		ctx->curr_template_list_pos = (ctx->curr_template_list_pos)->next;
+		if (ctx->curr_template_list_pos == NULL) {
+			return false;
+		}
+	} */
+	printk("Iterating over known audit sequence");
+	list_for_each(curr_event_ptr, &known_audit_seq){
+		exp_curr_event = list_entry(curr_event_ptr, struct audit_template_entry, list);
+		printk("syscall in audit_template : %px %d\n",exp_curr_event,exp_curr_event->syscallNumber);
+	}
+
+	/* ist_for_each (curr_event_ptr, ctx->curr_template_list_pos) {
+		exp_curr_event = list_entry(curr_event_ptr,
+					    struct audit_template_entry, list);
+		printk("syscall being checked %d %d ",
+		       exp_curr_event->syscallNumber, ctx->major);
+		if (exp_curr_event->syscallNumber == ctx->major) {
+			printk("syscall number %d matched",
+			       exp_curr_event->syscallNumber);
+			return true;
+		}
+	} */
+
 	return false;
 }
 
