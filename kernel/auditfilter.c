@@ -1386,14 +1386,14 @@ unlock_and_return:
 
 bool audit_filter_template(int msgtype, struct audit_context *ctx)
 {
+	struct list_head *curr_event_ptr = ctx->curr_template_list_pos;
+	struct audit_template_entry *exp_curr_event =
+		list_entry(curr_event_ptr, struct audit_template_entry, list);
+
 	if (msgtype != AUDIT_SYSCALL || !(ctx->in_syscall) || ctx == NULL ||
 	    ctx->curr_template_list_pos == NULL)
 		return false;
 
-	struct list_head *curr_event_ptr = ctx->curr_template_list_pos;
-	struct audit_template_entry *exp_curr_event =
-		list_entry(curr_event_ptr, struct audit_template_entry, list);
-	
 	if(exp_curr_event->syscallNumber == ctx->major){
 		printk("syscall number matched");
 		return true;

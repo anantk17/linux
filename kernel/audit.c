@@ -221,11 +221,10 @@ LIST_HEAD(known_audit_seq);
 static void setup_audit_template(void){
 	struct audit_template_entry first;
 	struct audit_template_entry *entry = NULL;
+	struct list_head *position;
 
 	INIT_LIST_HEAD(&first.list);
 	list_add_tail(&first.list,&known_audit_seq);
-
-	struct list_head *position;
 	list_for_each(position, &known_audit_seq){
 		entry = list_entry(position, struct audit_template_entry, list);
 		printk("syscall in audit_template : %d\n",entry->syscallNumber);
