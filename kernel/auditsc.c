@@ -922,6 +922,7 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 	context->state = state;
 	context->prio = state == AUDIT_RECORD_CONTEXT ? ~0ULL : 0;
 	context->curr_template_list_pos = &known_audit_seq;
+	INIT_LIST_HEAD(&context->curr_buff_list_head);
 	INIT_LIST_HEAD(&context->killed_trees);
 	INIT_LIST_HEAD(&context->names_list);
 	return context;
@@ -965,6 +966,10 @@ int audit_alloc(struct task_struct *tsk)
 
 static inline void audit_free_context(struct audit_context *context)
 {
+	//we also need to delete the list_head for the buffer list
+	free_buffered_logs(context);
+	list_del(&context->curr_buff_list_head);
+
 	audit_free_names(context);
 	unroll_tree_refs(context, NULL, 0);
 	free_tree_refs(context);
@@ -1181,7 +1186,7 @@ out:
 	kfree(buf_head);
 }
 
-static void show_special(struct audit_context *context, int *call_panic)
+static void show_special(struct audit_context *context, int *call_panic, bool toBuffer)
 {
 	struct audit_buffer *ab;
 	int i;
@@ -1288,7 +1293,7 @@ static void show_special(struct audit_context *context, int *call_panic)
 
 		break;
 	}
-	audit_log_end(ab);
+	toBuffer ? add_log_to_template(context,ab) : audit_log_end(ab);
 }
 
 static inline int audit_proctitle_rtrim(char *proctitle, int len)
@@ -1304,7 +1309,7 @@ static inline int audit_proctitle_rtrim(char *proctitle, int len)
 }
 
 static void audit_log_proctitle(struct task_struct *tsk,
-			 struct audit_context *context)
+			 struct audit_context *context, bool toBuffer)
 {
 	int res;
 	char *buf;
@@ -1341,7 +1346,7 @@ static void audit_log_proctitle(struct task_struct *tsk,
 	len = context->proctitle.len;
 out:
 	audit_log_n_untrustedstring(ab, msg, len);
-	audit_log_end(ab);
+	toBuffer ? add_log_to_template(context,ab) : audit_log_end(ab);
 }
 
 static void audit_log_exit(struct audit_context *context, struct task_struct *tsk)
@@ -1350,11 +1355,27 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	struct audit_buffer *ab;
 	struct audit_aux_data *aux;
 	struct audit_names *n;
+	bool matched;
 
 	/* tsk == current */
 	context->personality = tsk->personality;
 
+	//If we have the check right here, we can know if it makes sense to 
+	//match the template further or not.
+	//In case there is a positive match, we just keep things allocated in memory,
+	//and don't send them down to the queue. Our assumption being that it is the 
+	//reading from the queue that is happening out of band for us, which adds this 
+	//log losses to the system.
+
+	//Otherwise, we perform audit_log_end on all the buffers that we have captured till then
+	//and reset the 
+	matched = audit_filter_template(context);
+
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
+	//we can allocate the memory without issues as we believe the slowdown is 
+	//because we can't free them fast enough.
+	//So we have a mechanism by which we tell this function whether the function
+	//needs to be 
 	if (!ab)
 		return;		/* audit_panic has been called */
 	audit_log_format(ab, "arch=%x syscall=%d",
@@ -1376,7 +1397,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 
 	audit_log_task_info(ab, tsk);
 	audit_log_key(ab, context->filterkey);
-	audit_log_end(ab);
+	matched ? add_log_to_template(context,ab) : audit_log_end(ab);
 
 	for (aux = context->aux; aux; aux = aux->next) {
 
@@ -1403,18 +1424,18 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			break; }
 
 		}
-		audit_log_end(ab);
+		matched ? add_log_to_template(context,ab) : audit_log_end(ab);
 	}
 
 	if (context->type)
-		show_special(context, &call_panic);
+		show_special(context, &call_panic,matched);
 
 	if (context->fds[0] >= 0) {
 		ab = audit_log_start(context, GFP_KERNEL, AUDIT_FD_PAIR);
 		if (ab) {
 			audit_log_format(ab, "fd0=%d fd1=%d",
 					context->fds[0], context->fds[1]);
-			audit_log_end(ab);
+			matched ? add_log_to_template(context,ab) : audit_log_end(ab);
 		}
 	}
 
@@ -1424,7 +1445,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			audit_log_format(ab, "saddr=");
 			audit_log_n_hex(ab, (void *)context->sockaddr,
 					context->sockaddr_len);
-			audit_log_end(ab);
+			matched ? add_log_to_template(context,ab) : audit_log_end(ab);
 		}
 	}
 
@@ -1452,7 +1473,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 		ab = audit_log_start(context, GFP_KERNEL, AUDIT_CWD);
 		if (ab) {
 			audit_log_d_path(ab, "cwd=", &context->pwd);
-			audit_log_end(ab);
+			matched ? add_log_to_template(context,ab) : audit_log_end(ab);
 		}
 	}
 
@@ -1463,12 +1484,12 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 		audit_log_name(context, n, NULL, i++, &call_panic);
 	}
 
-	audit_log_proctitle(tsk, context);
+	audit_log_proctitle(tsk, context,matched);
 
 	/* Send end of event record to help user space know we are finished */
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_EOE);
 	if (ab)
-		audit_log_end(ab);
+		matched ? add_log_to_template(context,ab) : audit_log_end(ab);
 	if (call_panic)
 		audit_panic("error converting sid to string");
 }

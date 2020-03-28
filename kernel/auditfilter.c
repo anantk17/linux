@@ -928,11 +928,7 @@ static void create_audit_template_entry(int syscall_number)
 
 static void setup_audit_template(void)
 {
-	int audit_sequence[] = { __NR_execve, __NR_openat, __NR_close,
-				 __NR_openat, __NR_read,   __NR_close,
-				 __NR_openat, __NR_close,  __NR_openat,
-				 __NR_read,   __NR_close,  __NR_openat,
-				 __NR_write };
+	int audit_sequence[] = { __NR_read, __NR_write };
 	int i = 0;
 	struct list_head *position;
 	struct audit_template_entry *entry;
@@ -1422,25 +1418,22 @@ unlock_and_return:
 }
 
 bool update_template_ptr(struct audit_context *ctx,
-			 struct list_head *curr_template_ptr)
+			 struct list_head **curr_template_ptr)
 {
-	//we need to take care not to set the template ptr back to the head,
-	//that wouldn't make any sense.
-	if (curr_template_ptr == &known_audit_seq || curr_template_ptr <= 0 ||
-	    curr_template_ptr == NULL) {
-		return false;
+	if((*curr_template_ptr)->next == &known_audit_seq){
+		*curr_template_ptr = (*curr_template_ptr)->next->next;
+	} else{
+		*curr_template_ptr = (*curr_template_ptr)->next;
 	}
-	ctx->curr_template_list_pos = curr_template_ptr;
+	ctx->curr_template_list_pos = *curr_template_ptr;
 	return true;
 }
 
 bool set_template_ptr_to_start(struct audit_context *ctx)
 {
-	//!!!A potential issue might be that we might wrap around the entire sequence,
-	//and start off at the beginning -> handled in update_template_ptr
 	if (ctx->curr_template_list_pos == &known_audit_seq) {
 		//if we are at the head of the list, we need to move to the
-		//first element before beginning out checks
+		//first element before beginning our checks
 		ctx->curr_template_list_pos =
 			(ctx->curr_template_list_pos)->next;
 		//if we end up at a null pointer or at the head again,
@@ -1456,29 +1449,55 @@ bool set_template_ptr_to_start(struct audit_context *ctx)
 bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
+	printk("checking for match %d, %d",curr_event->syscallNumber, ctx->major);
 	return (curr_event->syscallNumber == ctx->major);
 }
 
 void log_if_end_of_template(struct list_head *curr_event_ptr)
 {	
-	//printk("checking if we are at the end of the line %px %px",curr_event_ptr, curr_event_ptr->next);
+	printk("checking if we are at the end of the line %px %px",curr_event_ptr, curr_event_ptr->next);
 	if (curr_event_ptr->next == &known_audit_seq) {
-		audit_log(NULL, GFP_KERNEL, AUDIT_CONFIG_CHANGE,
+		audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,
 			  "template processing finished");
+		curr_event_ptr = curr_event_ptr->next;
 	}
 }
 
-bool audit_filter_template(int msgtype, struct audit_context *ctx)
+void flush_buffered_logs(struct audit_context *ctx)
+{
+	struct audit_buffer_list_entry *curr_entry;
+
+	list_for_each_entry(curr_entry,&ctx->curr_buff_list_head,list) {
+		//ending audit log inserts it into the kauditd queue
+		audit_log_end(curr_entry->buffer);
+	}
+}
+
+void free_buffered_logs(struct audit_context *ctx){
+	struct list_head *curr_audit_log_head, *temp_head;
+	struct audit_buffer_list_entry *curr_entry;
+
+	list_for_each_safe (curr_audit_log_head, temp_head,
+			    &ctx->curr_buff_list_head) {
+		curr_entry = list_entry(curr_audit_log_head,
+					struct audit_buffer_list_entry, list);
+		list_del(curr_audit_log_head);
+		kfree(curr_entry);
+	}
+	list_del_init(&ctx->curr_buff_list_head); //reset and initialize buffer list head
+}
+
+bool audit_filter_template(struct audit_context *ctx)
 {
 	struct list_head *curr_event_ptr;
 	struct audit_template_entry *exp_curr_event;
 
-	if (msgtype != AUDIT_SYSCALL || !(ctx->in_syscall) || ctx == NULL ||
-	    ctx->curr_template_list_pos == NULL) {
+	if (!(ctx->in_syscall) || ctx == NULL || 
+	ctx->curr_template_list_pos == NULL) {
 		return false;
 	}
 
-	if (set_template_ptr_to_start(ctx)) {
+	if (set_template_ptr_to_start(ctx)) { //is this even required at this point in time?
 		curr_event_ptr = ctx->curr_template_list_pos;
 		exp_curr_event = list_entry(curr_event_ptr,
 					    struct audit_template_entry, list);
@@ -1489,22 +1508,32 @@ bool audit_filter_template(int msgtype, struct audit_context *ctx)
 			return true;
 		} //otherwise, we want to go check the next syscall in the sequence
 		else {
-			//printk("syscall didn't match on the first attempt, we will move forward");
-			curr_event_ptr = (curr_event_ptr)->next;
+			//update context with current pointer, 
+			//this needs to happen even if match doesn't happen
+			update_template_ptr(ctx,&curr_event_ptr);
 			exp_curr_event =
 				list_entry(curr_event_ptr,
 					   struct audit_template_entry, list);
-			//update context with current pointer, 
-			//this needs to happen even if match doesn't happen
-			update_template_ptr(ctx, curr_event_ptr);
+			
 			if (match_audit_template_event(exp_curr_event, ctx)){
 				log_if_end_of_template(curr_event_ptr);
 				return true;
 			}
 			//if we know we have gone around the template once, 
 			//we should send out a log that says that
+			
+			//if we fail to match even here, we should head back to 
+			//the start and log every syscall we encountered since the beginning
 		}
 	}
+	//if we end up here, it means we haven't matched the template, 
+	//so we can flush any saved logs that we had
+	//do the template flush here
+	flush_buffered_logs(ctx); //this should also delete all elements from the list, while saving the list head
+	free_buffered_logs(ctx); //free space allocated for buferring audit logs
+	//reset the current template pointer to the beginning
+	ctx->curr_template_list_pos = &known_audit_seq;
+
 	return false;
 }
 
@@ -1563,4 +1592,15 @@ int audit_update_lsm_rules(void)
 	mutex_unlock(&audit_filter_mutex);
 
 	return err;
+}
+
+void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab){
+	//We need to restrict the length of these matches to save kernel memory
+	//We can setup a config per process to enforce this restriction
+	struct audit_buffer_list_entry *new_buffer =
+		kmalloc(sizeof(struct audit_buffer_list_entry), GFP_KERNEL);
+	new_buffer->buffer = ab;
+
+	list_add_tail(&(new_buffer->list), &ctx->curr_buff_list_head);
+	return;
 }

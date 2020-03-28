@@ -106,9 +106,17 @@ struct audit_proctitle {
 	char	*value;	/* the cmdline field */
 };
 
+struct audit_buffer_list_entry{
+	struct audit_buffer *buffer;
+	
+	struct list_head list;
+};
+
 struct audit_template_entry{
 	int syscallNumber;
-
+	//need to add syscall related context here, probably syscall arguments
+	unsigned long argv[4]; //store syscall arguments
+	
 	struct list_head list;
 };
 
@@ -127,6 +135,7 @@ struct audit_context {
 	u64		    prio;
 	int		    return_valid; /* return code is valid */
 	struct list_head *curr_template_list_pos;
+	struct list_head curr_buff_list_head;
 	/*
 	 * The names_list is the list of all audit_names collected during this
 	 * syscall.  The first AUDIT_NAMES entries in the names_list will
@@ -340,7 +349,10 @@ extern kuid_t audit_sig_uid;
 extern u32 audit_sig_sid;
 
 extern int audit_filter(int msgtype, unsigned int listtype);
-extern bool audit_filter_template(int msgtype, struct audit_context *ctx);
+
+extern bool audit_filter_template(struct audit_context *ctx);
+extern void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab);
+extern void free_buffered_logs(struct audit_context *ctx);
 
 #ifdef CONFIG_AUDITSYSCALL
 extern int audit_signal_info(int sig, struct task_struct *t);
