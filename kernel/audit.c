@@ -2278,11 +2278,12 @@ void audit_log_task_info(struct audit_buffer *ab, struct task_struct *tsk)
 	cred = current_cred();
 	tty = audit_get_tty(tsk);
 	audit_log_format(ab,
-			 " ppid=%d pid=%d auid=%u uid=%u gid=%u"
+			 " ppid=%d pid=%d tid=%d auid=%u uid=%u gid=%u"
 			 " euid=%u suid=%u fsuid=%u"
 			 " egid=%u sgid=%u fsgid=%u tty=%s ses=%u",
 			 task_ppid_nr(tsk),
 			 task_tgid_nr(tsk),
+			 task_pid_nr(tsk),
 			 from_kuid(&init_user_ns, audit_get_loginuid(tsk)),
 			 from_kuid(&init_user_ns, cred->uid),
 			 from_kgid(&init_user_ns, cred->gid),

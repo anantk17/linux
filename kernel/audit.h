@@ -121,6 +121,7 @@ struct audit_template_entry{
 };
 
 extern struct list_head known_audit_seq;
+extern int template_length;
 
 /* The per-task audit context. */
 struct audit_context {
@@ -136,6 +137,7 @@ struct audit_context {
 	int		    return_valid; /* return code is valid */
 	struct list_head *curr_template_list_pos;
 	struct list_head curr_buff_list_head;
+	int template_len_matched;
 	/*
 	 * The names_list is the list of all audit_names collected during this
 	 * syscall.  The first AUDIT_NAMES entries in the names_list will

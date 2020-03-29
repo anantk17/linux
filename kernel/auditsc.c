@@ -922,6 +922,7 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 	context->state = state;
 	context->prio = state == AUDIT_RECORD_CONTEXT ? ~0ULL : 0;
 	context->curr_template_list_pos = &known_audit_seq;
+	context->template_len_matched = 0;
 	INIT_LIST_HEAD(&context->curr_buff_list_head);
 	INIT_LIST_HEAD(&context->killed_trees);
 	INIT_LIST_HEAD(&context->names_list);

@@ -917,11 +917,15 @@ out:
 static u64 prio_low = ~0ULL/2;
 static u64 prio_high = ~0ULL/2 - 1;
 
+int template_length;
+
 static void create_audit_template_entry(int syscall_number)
 {
 	struct audit_template_entry *new_elem =
 		kmalloc(sizeof(struct audit_template_entry), GFP_KERNEL);
 	new_elem->syscallNumber = syscall_number;
+	//hardcoding syscall args for now
+	new_elem->argv[0] = 3;
 	INIT_LIST_HEAD(&(new_elem->list));
 	list_add_tail(&(new_elem->list), &known_audit_seq);
 }
@@ -929,6 +933,7 @@ static void create_audit_template_entry(int syscall_number)
 static void setup_audit_template(void)
 {
 	int audit_sequence[] = { __NR_read, __NR_write };
+	template_length = 2;
 	int i = 0;
 	struct list_head *position;
 	struct audit_template_entry *entry;
@@ -1417,49 +1422,31 @@ unlock_and_return:
 	return ret;
 }
 
-bool update_template_ptr(struct audit_context *ctx,
-			 struct list_head **curr_template_ptr)
-{
-	if((*curr_template_ptr)->next == &known_audit_seq){
-		*curr_template_ptr = (*curr_template_ptr)->next->next;
-	} else{
-		*curr_template_ptr = (*curr_template_ptr)->next;
-	}
-	ctx->curr_template_list_pos = *curr_template_ptr;
-	return true;
-}
-
-bool set_template_ptr_to_start(struct audit_context *ctx)
-{
-	if (ctx->curr_template_list_pos == &known_audit_seq) {
-		//if we are at the head of the list, we need to move to the
-		//first element before beginning our checks
-		ctx->curr_template_list_pos =
-			(ctx->curr_template_list_pos)->next;
-		//if we end up at a null pointer or at the head again,
-		//that means we haven't setup the template correctly
-		if (ctx->curr_template_list_pos == NULL ||
-		    ctx->curr_template_list_pos == &known_audit_seq) {
-			return false;
-		}
-	}
-	return true;
-}
-
 bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
-	printk("checking for match %d, %d",curr_event->syscallNumber, ctx->major);
-	return (curr_event->syscallNumber == ctx->major);
+	printk("checking for match %d, %d, %d",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
+
+	if(curr_event->syscallNumber == ctx->major){
+		switch(ctx->major){
+			case __NR_read: case __NR_write:
+				return (curr_event->argv[0] == ctx->argv[0]);
+				break;
+		}
+	}
+
+	return false;
 }
 
-void log_if_end_of_template(struct list_head *curr_event_ptr)
+void log_if_end_of_template(struct list_head *curr_event_ptr, struct audit_context *ctx)
 {	
-	printk("checking if we are at the end of the line %px %px",curr_event_ptr, curr_event_ptr->next);
-	if (curr_event_ptr->next == &known_audit_seq) {
+	printk("checking if we are at the end of the line %px %px %px %d",curr_event_ptr, curr_event_ptr->next,&known_audit_seq,ctx->template_len_matched);
+	if (ctx->template_len_matched == template_length && curr_event_ptr == &known_audit_seq) {
+		free_buffered_logs(ctx);
 		audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,
 			  "template processing finished");
-		curr_event_ptr = curr_event_ptr->next;
+		//if the template matching has finished, we should reset the head to be at the beginning of the template
+		ctx->curr_template_list_pos = ctx->curr_template_list_pos->next;
 	}
 }
 
@@ -1485,6 +1472,9 @@ void free_buffered_logs(struct audit_context *ctx){
 		kfree(curr_entry);
 	}
 	list_del_init(&ctx->curr_buff_list_head); //reset and initialize buffer list head
+	
+	ctx->template_len_matched = 0;
+	ctx->curr_template_list_pos = &known_audit_seq;
 }
 
 bool audit_filter_template(struct audit_context *ctx)
@@ -1496,43 +1486,39 @@ bool audit_filter_template(struct audit_context *ctx)
 	ctx->curr_template_list_pos == NULL) {
 		return false;
 	}
+	
+	curr_event_ptr = ctx->curr_template_list_pos;
+	exp_curr_event = list_entry(curr_event_ptr,
+					struct audit_template_entry, list);
+	//if we match the syscall directly, then we are good,
+	//we remain at the same position, to account for repetitions
+	if (curr_event_ptr != &known_audit_seq && match_audit_template_event(exp_curr_event, ctx)) {
+		return true;
+	} //otherwise, we want to go check the next syscall in the sequence
+	else {
+		//update context with pointer to next syscall in sequence
+		ctx->curr_template_list_pos = ctx->curr_template_list_pos->next;
+		//check if we have seen the entire template
+		log_if_end_of_template(curr_event_ptr,ctx);
+		//we continue matching the next syscall in sequence as usual
+		//we would have started from the first syscall in template, in case we found a complete match
 
-	if (set_template_ptr_to_start(ctx)) { //is this even required at this point in time?
 		curr_event_ptr = ctx->curr_template_list_pos;
-		exp_curr_event = list_entry(curr_event_ptr,
-					    struct audit_template_entry, list);
-		//if we match the syscall directly, then we are good,
-		//we remain at the same position, to account for repetitions
-		if (match_audit_template_event(exp_curr_event, ctx)) {
-			log_if_end_of_template(curr_event_ptr);
+		exp_curr_event =
+			list_entry(curr_event_ptr,
+					struct audit_template_entry, list);
+		
+		if (curr_event_ptr != &known_audit_seq && match_audit_template_event(exp_curr_event, ctx)){
+			ctx->template_len_matched += 1;
 			return true;
-		} //otherwise, we want to go check the next syscall in the sequence
-		else {
-			//update context with current pointer, 
-			//this needs to happen even if match doesn't happen
-			update_template_ptr(ctx,&curr_event_ptr);
-			exp_curr_event =
-				list_entry(curr_event_ptr,
-					   struct audit_template_entry, list);
-			
-			if (match_audit_template_event(exp_curr_event, ctx)){
-				log_if_end_of_template(curr_event_ptr);
-				return true;
-			}
-			//if we know we have gone around the template once, 
-			//we should send out a log that says that
-			
-			//if we fail to match even here, we should head back to 
-			//the start and log every syscall we encountered since the beginning
 		}
 	}
 	//if we end up here, it means we haven't matched the template, 
 	//so we can flush any saved logs that we had
 	//do the template flush here
+	printk("template matching failed, need to reset ptr position");
 	flush_buffered_logs(ctx); //this should also delete all elements from the list, while saving the list head
 	free_buffered_logs(ctx); //free space allocated for buferring audit logs
-	//reset the current template pointer to the beginning
-	ctx->curr_template_list_pos = &known_audit_seq;
 
 	return false;
 }
@@ -1597,6 +1583,7 @@ int audit_update_lsm_rules(void)
 void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab){
 	//We need to restrict the length of these matches to save kernel memory
 	//We can setup a config per process to enforce this restriction
+	//Additionally, we can allocate space for this list beforehand to save on time spent in malloc
 	struct audit_buffer_list_entry *new_buffer =
 		kmalloc(sizeof(struct audit_buffer_list_entry), GFP_KERNEL);
 	new_buffer->buffer = ab;
