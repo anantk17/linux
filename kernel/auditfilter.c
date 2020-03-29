@@ -1425,23 +1425,25 @@ unlock_and_return:
 bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
+	bool match = false;
 	printk("checking for match %d, %d, %d",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
 
 	if(curr_event->syscallNumber == ctx->major){
 		switch(ctx->major){
 			case __NR_read: case __NR_write:
-				return (curr_event->argv[0] == ctx->argv[0]);
+				printk("checking syscall args: %lu %lu", curr_event->argv[0],ctx->argv[0]);
+				match = (curr_event->argv[0] == ctx->argv[0]);
 				break;
 		}
 	}
 
-	return false;
+	printk("match %d",match);
+	return match;
 }
 
-void log_if_end_of_template(struct list_head *curr_event_ptr, struct audit_context *ctx)
+void log_if_end_of_template(struct audit_context *ctx)
 {	
-	printk("checking if we are at the end of the line %px %px %px %d",curr_event_ptr, curr_event_ptr->next,&known_audit_seq,ctx->template_len_matched);
-	if (ctx->template_len_matched == template_length && curr_event_ptr == &known_audit_seq) {
+	if (ctx->template_len_matched == template_length && ctx->curr_template_list_pos == &known_audit_seq) {
 		free_buffered_logs(ctx);
 		audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,
 			  "template processing finished");
@@ -1499,7 +1501,7 @@ bool audit_filter_template(struct audit_context *ctx)
 		//update context with pointer to next syscall in sequence
 		ctx->curr_template_list_pos = ctx->curr_template_list_pos->next;
 		//check if we have seen the entire template
-		log_if_end_of_template(curr_event_ptr,ctx);
+		log_if_end_of_template(ctx);
 		//we continue matching the next syscall in sequence as usual
 		//we would have started from the first syscall in template, in case we found a complete match
 
