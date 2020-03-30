@@ -1480,6 +1480,10 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		audit_log_end(ab);
 		break;
 	}
+	case AUDIT_ADD_TEMPLATE: {
+		
+		break;
+	}
 	default:
 		err = -EINVAL;
 		break;

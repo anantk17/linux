@@ -71,8 +71,6 @@ static struct list_head audit_rules_list[AUDIT_NR_FILTERS] = {
 	LIST_HEAD_INIT(audit_rules_list[6]),
 };
 
-LIST_HEAD(known_audit_seq);
-
 DEFINE_MUTEX(audit_filter_mutex);
 
 static void audit_free_lsm_field(struct audit_field *f)
@@ -919,38 +917,57 @@ static u64 prio_high = ~0ULL/2 - 1;
 
 int template_length;
 
-static void create_audit_template_entry(int syscall_number)
+static void create_audit_template_entry(struct audit_template *new_template,
+					struct audit_template_data data[],
+					int length, int rel_thread_id)
 {
-	struct audit_template_entry *new_elem =
-		kmalloc(sizeof(struct audit_template_entry), GFP_KERNEL);
-	new_elem->syscallNumber = syscall_number;
-	//hardcoding syscall args for now
-	new_elem->argv[0] = 3;
-	INIT_LIST_HEAD(&(new_elem->list));
-	list_add_tail(&(new_elem->list), &known_audit_seq);
+	int i = 0;
+	INIT_LIST_HEAD(&(new_template->head));
+	new_template->length = length;
+	new_template->rel_thread_id = rel_thread_id;
+
+	for (; i < length; i++) {
+		struct audit_template_entry *new_elem = kmalloc(
+			sizeof(struct audit_template_entry), GFP_KERNEL);
+		new_elem->syscallNumber = data[i].syscallNumber;
+
+		new_elem->argv[0] = data[i].argv[0];
+		new_elem->argv[1] = data[i].argv[1];
+		new_elem->argv[2] = data[i].argv[2];
+		new_elem->argv[3] = data[i].argv[3];
+		list_add_tail(&(new_elem->list), &(new_template->head));
+	}
+	return;
 }
 
 static void setup_audit_template(void)
 {
-	int audit_sequence[] = { __NR_read, __NR_write };
-	template_length = 2;
-	int i = 0;
-	struct list_head *position;
-	struct audit_template_entry *entry;
+	struct audit_template_data template_data[] = {
+		{ __NR_read, { 3, -1, -1, -1 } },
+		{ __NR_write, { 3, -1, -1, -1 } }
+	};
 
-	for (; i < ARRAY_SIZE(audit_sequence); i++) {
-		create_audit_template_entry(audit_sequence[i]);
+	struct audit_template_data template_data_1[] = {
+		{ __NR_read, { 3, -1, -1, -1 } },
+		{ __NR_write, { 3, -1, -1, -1 } }
+	};
+
+	create_audit_template_entry(&audit_templates[0],template_data,2,0);
+	create_audit_template_entry(&audit_templates[1],template_data_1,2,2);
+
+	audit_templates_loaded = 2;
+
+	for(int i = 0; i < audit_templates_loaded; i++){
+		struct audit_template template = audit_templates[i];
+		printk("loaded template %d, rel_thread_id : %d, length : %d",i+1,template.rel_thread_id,template.length);
+		struct list_head *position;
+		struct audit_template_entry *entry; 
+		list_for_each (position, &template.head) {
+			entry = list_entry(position, struct audit_template_entry, list);
+			printk("syscall number : %d",entry->syscallNumber);
+		}
 	}
 
-	printk("audit seq list head %px ",&known_audit_seq);
-
-	list_for_each (position, &known_audit_seq) {
-		entry = list_entry(position, struct audit_template_entry, list);
-		printk("syscall in audit_template : %px %d\n", entry,
-		       entry->syscallNumber);
-	}
-
-	printk("last template entry %px",known_audit_seq.prev);
 }
 
 /* Add rule to given filterlist if not a duplicate. */

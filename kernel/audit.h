@@ -30,6 +30,9 @@
  * a name dynamically and also add those to the list anchored by names_list. */
 #define AUDIT_NAMES	5
 
+//This is the hard limit on the number of templates we want to hold in memory
+#define NUM_AUDIT_TEMPLATE_MAX 5
+
 /* At task start time, the audit_state is set in the audit_context using
    a per-task filter.  At syscall entry, the audit_state is augmented by
    the syscall filter. */
@@ -120,8 +123,25 @@ struct audit_template_entry{
 	struct list_head list;
 };
 
-extern struct list_head known_audit_seq;
-extern int template_length;
+//We assume for now that there is a single application under test, and we have multiple templates for the same
+struct audit_template{
+	int length;
+	int rel_thread_id;
+	
+	struct list_head head;
+};
+
+struct audit_template_data{
+	int syscallNumber;
+	unsigned long argv [4];
+};
+
+//we extend a single template to a list of known templates,
+//caveat being that these audit templates should be uniquely identifiable
+//meaning that once we choose a template, we should be sure that we would be following that template itself
+//each thread will match atmost one unique template
+extern struct audit_template audit_templates[NUM_AUDIT_TEMPLATE_MAX];
+extern int audit_templates_loaded;
 
 /* The per-task audit context. */
 struct audit_context {
@@ -135,9 +155,12 @@ struct audit_context {
 	long		    return_code;/* syscall return code */
 	u64		    prio;
 	int		    return_valid; /* return code is valid */
+	
+	struct list_head *curr_template_list_head;
 	struct list_head *curr_template_list_pos;
 	struct list_head curr_buff_list_head;
 	int template_len_matched;
+	
 	/*
 	 * The names_list is the list of all audit_names collected during this
 	 * syscall.  The first AUDIT_NAMES entries in the names_list will

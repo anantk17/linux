@@ -912,6 +912,12 @@ static inline void audit_free_aux(struct audit_context *context)
 	}
 }
 
+static void audit_set_template_context(struct task_struct *tsk, struct audit_context *ctx){
+	int rel_thread_id = tsk->pid - tsk->tgid;
+	
+
+}
+
 static inline struct audit_context *audit_alloc_context(enum audit_state state)
 {
 	struct audit_context *context;
@@ -921,9 +927,10 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 		return NULL;
 	context->state = state;
 	context->prio = state == AUDIT_RECORD_CONTEXT ? ~0ULL : 0;
-	context->curr_template_list_pos = &known_audit_seq;
+	
 	context->template_len_matched = 0;
 	INIT_LIST_HEAD(&context->curr_buff_list_head);
+	
 	INIT_LIST_HEAD(&context->killed_trees);
 	INIT_LIST_HEAD(&context->names_list);
 	return context;
@@ -959,7 +966,7 @@ int audit_alloc(struct task_struct *tsk)
 		return -ENOMEM;
 	}
 	context->filterkey = key;
-
+	audit_set_template_context(tsk,context);
 	audit_set_context(tsk, context);
 	set_tsk_thread_flag(tsk, TIF_SYSCALL_AUDIT);
 	return 0;
