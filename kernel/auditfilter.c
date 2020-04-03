@@ -951,25 +951,34 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 static void add_audit_template(struct audit_template_data data[],
 					int length)
 {
-	int i = 0;
+	int i = 0,j = 0;
 	struct audit_template_entry *next_entry ,*parent_entry = &audit_template_start;
-	for(; i < length; i++){
-		if(!template_entry_equal(parent_entry,&data[i])){
-			//update children
+	//we start from the root node, and check if level + 1 nodes contain a match,
+	//if they do, we simply move forward from the matched node
+	
+	for(i ; i < length; i++){
+		bool children_match = false;
+		for(j = 0; j < parent_entry->num_children;i++){
+			next_entry = parent_entry->children_list;
+			if(template_entry_equal(next_entry,&data[i])){
+				parent_entry = next_entry;
+				children_match = true;
+				break;
+			}
+		}
+
+		if(!children_match){
+			//this means we need to add a new child node here
 			next_entry = create_audit_template_entry(data[i]);
 			next_entry->next = parent_entry->children_list;
 			parent_entry->children_list = next_entry;
-			
-			//update children count
 			parent_entry->num_children++;
-
-			//move down the template
 			parent_entry = next_entry;
 			printk("new node added %px, %d\n",parent_entry,parent_entry->syscallNumber);
-		}		
+		}
 	}
-	parent_entry->end_of_template = 1;
 
+	parent_entry->end_of_template = 1;
 	return;
 }
 
