@@ -431,8 +431,10 @@ static int audit_do_config_change(char *function_name, u32 *to_change, u32 new)
 	}
 
 	/* If we are allowed, make the change */
-	if (allow_changes == 1)
+	if (allow_changes == 1){
 		*to_change = new;
+		printk("Values updated : %s from %u to %u",function_name,*to_change,new);
+	}
 	/* Not allowed, update reason */
 	else if (rc == 0)
 		rc = -EPERM;
@@ -1230,6 +1232,7 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		memset(&s, 0, sizeof(s));
 		/* guard against past and future API changes */
 		memcpy(&s, data, min_t(size_t, sizeof(s), nlmsg_len(nlh)));
+		//printk("Audit set mask %u %u",s.mask,s.template_enabled);
 		if (s.mask & AUDIT_STATUS_ENABLED) {
 			err = audit_set_enabled(s.enabled);
 			if (err < 0)
@@ -1326,7 +1329,7 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 			return lost;
 		}
 		if (s.mask & AUDIT_TEMPLATE_ENABLED) {
-			err = audit_set_enabled(s.enabled);
+			err = audit_set_template_enabled(s.template_enabled);
 			if (err < 0)
 				return err;
 		}
