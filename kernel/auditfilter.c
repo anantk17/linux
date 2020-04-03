@@ -113,11 +113,8 @@ void audit_free_rule_rcu(struct rcu_head *head)
 	audit_free_rule(e);
 }
 
-struct audit_template_entry audit_template_start = { -1,
-						     { -1, -1, -1, -1 },
-						     0,
-						     0,
-						     NULL };
+struct audit_template_entry audit_template_start;
+int audit_templates_loaded = 0;
 
 /* Initialize an audit filterlist entry. */
 static inline struct audit_entry *audit_init_entry(u32 field_count)
@@ -923,56 +920,89 @@ static u64 prio_high = ~0ULL/2 - 1;
 
 int template_length;
 
-static void create_audit_template_entry(struct audit_template *new_template,
-					struct audit_template_data data[],
-					int length, int rel_thread_id)
+static bool template_entry_equal(struct audit_template_entry *entry1, struct audit_template_data *entry2){
+	return entry1->syscallNumber == entry2->syscallNumber &&
+	       entry1->argv[0] == entry2->argv[0] &&
+	       entry1->argv[1] == entry2->argv[1] &&
+	       entry1->argv[2] == entry2->argv[2] &&
+	       entry1->argv[3] == entry2->argv[3];
+}
+
+static struct audit_template_entry* create_audit_template_entry(struct audit_template_data data){
+	struct audit_template_entry* new_entry = kmalloc(sizeof(struct audit_template_entry),GFP_KERNEL);
+	new_entry->syscallNumber= data.syscallNumber;
+	new_entry->argv[0] = data.argv[0];
+	new_entry->argv[1] = data.argv[1];
+	new_entry->argv[2] = data.argv[2];
+	new_entry->argv[3] = data.argv[3];
+
+	new_entry->children_list = NULL;
+	new_entry->num_children = 0;
+	new_entry->end_of_template = false;
+	new_entry->next = NULL;
+	
+	new_entry->template_name = kmalloc(20,GFP_KERNEL);
+	strncpy(new_entry->template_name,"Template 1",20);
+
+	return new_entry;
+
+}
+
+static void add_audit_template(struct audit_template_data data[],
+					int length)
 {
-	/* int i = 0;
-	INIT_LIST_HEAD(&(new_template->head));
-	new_template->length = length;
-	new_template->rel_thread_id = rel_thread_id;
+	int i = 0;
+	struct audit_template_entry *next_entry ,*parent_entry = &audit_template_start;
+	for(; i < length; i++){
+		if(!template_entry_equal(parent_entry,&data[i])){
+			//update children
+			next_entry = create_audit_template_entry(data[i]);
+			next_entry->next = parent_entry->children_list;
+			parent_entry->children_list = next_entry;
+			
+			//update children count
+			parent_entry->num_children++;
 
-	for (; i < length; i++) {
-		struct audit_template_entry *new_elem = kmalloc(
-			sizeof(struct audit_template_entry), GFP_KERNEL);
-		new_elem->syscallNumber = data[i].syscallNumber;
-
-		new_elem->argv[0] = data[i].argv[0];
-		new_elem->argv[1] = data[i].argv[1];
-		new_elem->argv[2] = data[i].argv[2];
-		new_elem->argv[3] = data[i].argv[3];
-		list_add_tail(&(new_elem->list), &(new_template->head));
+			//move down the template
+			parent_entry = next_entry;
+			printk("new node added %px, %d\n",parent_entry,parent_entry->syscallNumber);
+		}		
 	}
-	return; */
+	parent_entry->end_of_template = 1;
+
+	return;
+}
+
+static void traverse_template_automaton(struct audit_template_entry *entry){
+	struct audit_template_entry *curr_entry = entry;
+	if(curr_entry == NULL){
+		printk("NULL entry encountered\n");
+		return;
+	}
+	printk("curr_entry %px, child_entry %px, syscall : %d, argv 0 : %lu, eot : %d\n",curr_entry,curr_entry->children_list,curr_entry->syscallNumber,curr_entry->argv[0],curr_entry->end_of_template);
+	
+	
+	struct audit_template_entry *child = curr_entry->children_list;
+	while(child!=NULL){
+		traverse_template_automaton(child);
+		child = child->next;
+	}
 }
 
 static void setup_audit_template(void)
 {
-	/* struct audit_template_data template_data[] = {
+	struct audit_template_data template_data[] = {
 		{ __NR_read, { 3, -1, -1, -1 } },
 		{ __NR_write, { 3, -1, -1, -1 } }
 	};
 
-	struct audit_template_data template_data_1[] = {
-		{ __NR_read, { 3, -1, -1, -1 } },
-		{ __NR_write, { 3, -1, -1, -1 } }
-	};
+	add_audit_template(template_data,2);
 
-	create_audit_template_entry(&audit_templates[0],template_data,2,0);
-	create_audit_template_entry(&audit_templates[1],template_data_1,2,2);
+	audit_templates_loaded = 1;
 
-	audit_templates_loaded = 2;
+	printk("Audit template start node %px",&audit_template_start);
 
-	for(int i = 0; i < audit_templates_loaded; i++){
-		struct audit_template template = audit_templates[i];
-		printk("loaded template %d, rel_thread_id : %d, length : %d",i+1,template.rel_thread_id,template.length);
-		struct list_head *position;
-		struct audit_template_entry *entry; 
-		list_for_each (position, &template.head) {
-			entry = list_entry(position, struct audit_template_entry, list);
-			printk("syscall number : %d",entry->syscallNumber);
-		}
-	} */
+	traverse_template_automaton(&audit_template_start);
 
 }
 
@@ -1449,18 +1479,18 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
 	bool match = false;
-	printk("checking for match %d, %d, %d",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
+	printk("checking for match %d, %d, %d\n",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
 
 	if(curr_event->syscallNumber == ctx->major){
 		switch(ctx->major){
 			case __NR_read: case __NR_write:
-				printk("checking syscall args: %lu %lu", curr_event->argv[0],ctx->argv[0]);
+				printk("checking syscall args: %lu %lu\n", curr_event->argv[0],ctx->argv[0]);
 				match = (curr_event->argv[0] == ctx->argv[0]);
 				break;
 		}
 	}
 
-	printk("match %d",match);
+	printk("match %d\n",match);
 	return match;
 }
 
@@ -1478,6 +1508,7 @@ void flush_buffered_logs(struct audit_context *ctx)
 		//ending audit log inserts it into the kauditd queue
 		audit_log_end(curr_entry->buffer);
 	}
+	free_buffered_logs(ctx);
 }
 
 void free_buffered_logs(struct audit_context *ctx){
@@ -1495,7 +1526,7 @@ void free_buffered_logs(struct audit_context *ctx){
 }
 
 static void inline reset_curr_template_pos(struct audit_context *ctx){
-	return ctx->current_template_pos = &audit_template_start;
+	ctx->current_template_pos = &audit_template_start;
 }
 
 static inline bool has_template_ended(struct audit_template_entry *event){
@@ -1506,7 +1537,8 @@ static bool check_next_entries(struct audit_context *ctx){
 	bool match_found = false;
 	struct audit_template_entry *next_event = ctx->current_template_pos->children_list;
 	int num_children = ctx->current_template_pos->num_children;
-	for(int i=0; i< num_children; i++){
+	int i;
+	for(i = 0; i< num_children; i++){
 		if(next_event!= NULL && match_audit_template_event(next_event,ctx)){
 			ctx->current_template_pos = next_event;
 			match_found = true;
@@ -1552,12 +1584,13 @@ bool audit_filter_template(struct audit_context *ctx)
 				log_template_end(ctx);
 				reset_curr_template_pos(ctx);
 				match_found = check_next_entries(ctx);
-				if(!match_found){
-					//if out previous position wasn't a valid template ending, means we failed to find a match
-					printk("template matching failed, need to reset ptr position");
-					flush_buffered_logs(ctx);
-					reset_curr_template_pos(ctx);
-				}
+			}
+
+			if(!match_found){
+				//if out previous position wasn't a valid template ending, means we failed to find a match
+				printk("template matching failed, need to reset ptr position\n");
+				flush_buffered_logs(ctx);
+				reset_curr_template_pos(ctx);
 			}
 		}
 
