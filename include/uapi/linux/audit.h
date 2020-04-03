@@ -335,6 +335,7 @@ enum {
 #define AUDIT_STATUS_BACKLOG_LIMIT	0x0010
 #define AUDIT_STATUS_BACKLOG_WAIT_TIME	0x0020
 #define AUDIT_STATUS_LOST		0x0040
+#define AUDIT_TEMPLATE_ENABLED	0x0080
 
 #define AUDIT_FEATURE_BITMAP_BACKLOG_LIMIT	0x00000001
 #define AUDIT_FEATURE_BITMAP_BACKLOG_WAIT_TIME	0x00000002
@@ -445,6 +446,7 @@ struct audit_status {
 		__u32	feature_bitmap;	/* bitmap of kernel audit features */
 	};
 	__u32		backlog_wait_time;/* message queue wait timeout */
+	__u32		template_enabled; /*1 = templating enabled, 0 = templating disabled*/
 };
 
 struct audit_features {
@@ -485,5 +487,10 @@ struct audit_rule_data {
 	__u32		buflen;	/* total length of string fields */
 	char		buf[0];	/* string fields buffer */
 };
+
+/* struct audit_template_data {
+	__u32 		
+} */
+
 
 #endif /* _UAPI_LINUX_AUDIT_H_ */
