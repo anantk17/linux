@@ -113,6 +113,12 @@ void audit_free_rule_rcu(struct rcu_head *head)
 	audit_free_rule(e);
 }
 
+struct audit_template_entry audit_template_start = { -1,
+						     { -1, -1, -1, -1 },
+						     0,
+						     0,
+						     NULL };
+
 /* Initialize an audit filterlist entry. */
 static inline struct audit_entry *audit_init_entry(u32 field_count)
 {
@@ -921,7 +927,7 @@ static void create_audit_template_entry(struct audit_template *new_template,
 					struct audit_template_data data[],
 					int length, int rel_thread_id)
 {
-	int i = 0;
+	/* int i = 0;
 	INIT_LIST_HEAD(&(new_template->head));
 	new_template->length = length;
 	new_template->rel_thread_id = rel_thread_id;
@@ -937,12 +943,12 @@ static void create_audit_template_entry(struct audit_template *new_template,
 		new_elem->argv[3] = data[i].argv[3];
 		list_add_tail(&(new_elem->list), &(new_template->head));
 	}
-	return;
+	return; */
 }
 
 static void setup_audit_template(void)
 {
-	struct audit_template_data template_data[] = {
+	/* struct audit_template_data template_data[] = {
 		{ __NR_read, { 3, -1, -1, -1 } },
 		{ __NR_write, { 3, -1, -1, -1 } }
 	};
@@ -966,7 +972,7 @@ static void setup_audit_template(void)
 			entry = list_entry(position, struct audit_template_entry, list);
 			printk("syscall number : %d",entry->syscallNumber);
 		}
-	}
+	} */
 
 }
 
@@ -1458,15 +1464,10 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 	return match;
 }
 
-void log_if_end_of_template(struct audit_context *ctx)
+void log_template_end(struct audit_context *ctx)
 {	
-	if (ctx->template_len_matched == template_length && ctx->curr_template_list_pos == &known_audit_seq) {
-		free_buffered_logs(ctx);
-		audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,
-			  "template processing finished");
-		//if the template matching has finished, we should reset the head to be at the beginning of the template
-		ctx->curr_template_list_pos = ctx->curr_template_list_pos->next;
-	}
+	free_buffered_logs(ctx);
+	audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,"finished processing template : %s", ctx->current_template_pos->template_name);
 }
 
 void flush_buffered_logs(struct audit_context *ctx)
@@ -1491,55 +1492,79 @@ void free_buffered_logs(struct audit_context *ctx){
 		kfree(curr_entry);
 	}
 	list_del_init(&ctx->curr_buff_list_head); //reset and initialize buffer list head
-	
-	ctx->template_len_matched = 0;
-	ctx->curr_template_list_pos = &known_audit_seq;
+}
+
+static void inline reset_curr_template_pos(struct audit_context *ctx){
+	return ctx->current_template_pos = &audit_template_start;
+}
+
+static inline bool has_template_ended(struct audit_template_entry *event){
+	return event->end_of_template;
+}
+
+static bool check_next_entries(struct audit_context *ctx){
+	bool match_found = false;
+	struct audit_template_entry *next_event = ctx->current_template_pos->children_list;
+	int num_children = ctx->current_template_pos->num_children;
+	for(int i=0; i< num_children; i++){
+		if(next_event!= NULL && match_audit_template_event(next_event,ctx)){
+			ctx->current_template_pos = next_event;
+			match_found = true;
+			break;
+		}
+		next_event = next_event->next;
+	}
+	return match_found;
 }
 
 bool audit_filter_template(struct audit_context *ctx)
 {
-	struct list_head *curr_event_ptr;
 	struct audit_template_entry *exp_curr_event;
 
-	if (!(ctx->in_syscall) || ctx == NULL || 
-	ctx->curr_template_list_pos == NULL) {
+	if (!(ctx->in_syscall) || ctx == NULL || ctx->current_template_pos == NULL) {
 		return false;
 	}
-	
-	curr_event_ptr = ctx->curr_template_list_pos;
-	exp_curr_event = list_entry(curr_event_ptr,
-					struct audit_template_entry, list);
+
+	exp_curr_event = ctx->current_template_pos;
 	//if we match the syscall directly, then we are good,
 	//we remain at the same position, to account for repetitions
-	if (curr_event_ptr != &known_audit_seq && match_audit_template_event(exp_curr_event, ctx)) {
+	//if we match the current template, then we are good to continue
+	if (match_audit_template_event(exp_curr_event, ctx)) {
 		return true;
-	} //otherwise, we want to go check the next syscall in the sequence
+	} //otherwise, we want to go check the next options
 	else {
-		//update context with pointer to next syscall in sequence
-		ctx->curr_template_list_pos = ctx->curr_template_list_pos->next;
-		//check if we have seen the entire template
-		log_if_end_of_template(ctx);
-		//we continue matching the next syscall in sequence as usual
-		//we would have started from the first syscall in template, in case we found a complete match
+		struct audit_template_entry *next_event;
+		bool match_found = false;
 
-		curr_event_ptr = ctx->curr_template_list_pos;
-		exp_curr_event =
-			list_entry(curr_event_ptr,
-					struct audit_template_entry, list);
-		
-		if (curr_event_ptr != &known_audit_seq && match_audit_template_event(exp_curr_event, ctx)){
-			ctx->template_len_matched += 1;
-			return true;
+		//2 things can happen now, either we find a match or we don't
+		//in case we find a match, we don't need to do anything right now
+		//in case we don't find a match, we need to flush anything we found till now.
+		match_found = check_next_entries(ctx);
+
+		//if we are here, that means we have failed at matching the current and the next events
+		//this denotes that we have a mismatch, or the template has ended.
+		//if the template has ended, we can refer to the current_template_node to see if it occurs at the end of the template
+		//otherwise, we have a mismatch on our hands
+		if(!match_found){
+			//if we ended up here, it means that we haven't found a match for the current syscall
+			//in case our previous state was a valid end to a template, we need to log the end of the template there
+			if(has_template_ended(exp_curr_event)){
+				log_template_end(ctx);
+				reset_curr_template_pos(ctx);
+				match_found = check_next_entries(ctx);
+				if(!match_found){
+					//if out previous position wasn't a valid template ending, means we failed to find a match
+					printk("template matching failed, need to reset ptr position");
+					flush_buffered_logs(ctx);
+					reset_curr_template_pos(ctx);
+				}
+			}
 		}
-	}
-	//if we end up here, it means we haven't matched the template, 
-	//so we can flush any saved logs that we had
-	//do the template flush here
-	printk("template matching failed, need to reset ptr position");
-	flush_buffered_logs(ctx); //this should also delete all elements from the list, while saving the list head
-	free_buffered_logs(ctx); //free space allocated for buferring audit logs
 
-	return false;
+		return match_found;
+
+	}
+	return false;	//default action should always be to say we couldn't find match in template -> lets things take the normal course.
 }
 
 static int update_lsm_rule(struct audit_krule *r)

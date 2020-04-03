@@ -115,20 +115,23 @@ struct audit_buffer_list_entry{
 	struct list_head list;
 };
 
+//we try to represent the templates for the given application to be in the form of a prefix tree
 struct audit_template_entry{
 	int syscallNumber;
 	//need to add syscall related context here, probably syscall arguments
 	unsigned long argv[4]; //store syscall arguments
 	
-	struct list_head list;
-};
+	bool end_of_template;
+	char* template_name;
 
-//We assume for now that there is a single application under test, and we have multiple templates for the same
-struct audit_template{
-	int length;
-	int rel_thread_id;
-	
-	struct list_head head;
+	int num_children;
+	struct audit_template_entry *children_list;
+	//the way to identify potential end of templates is to check end_of_template, and then wait for next syscall
+	//leaf nodes can be checked by num_children == 0
+
+	//if end_of_template and num_children == 0, we definitely know that we are out of the woods.
+	//the requirement that templates not be substrings of one another simplifies initial impl and enables the above condition
+	struct audit_template_entry *next; //used for traversing children / sibling relations
 };
 
 struct audit_template_data{
@@ -136,11 +139,7 @@ struct audit_template_data{
 	unsigned long argv [4];
 };
 
-//we extend a single template to a list of known templates,
-//caveat being that these audit templates should be uniquely identifiable
-//meaning that once we choose a template, we should be sure that we would be following that template itself
-//each thread will match atmost one unique template
-extern struct audit_template audit_templates[NUM_AUDIT_TEMPLATE_MAX];
+extern struct audit_template_entry audit_template_start;
 extern int audit_templates_loaded;
 
 /* The per-task audit context. */
@@ -156,10 +155,8 @@ struct audit_context {
 	u64		    prio;
 	int		    return_valid; /* return code is valid */
 	
-	struct list_head *curr_template_list_head;
-	struct list_head *curr_template_list_pos;
+	struct audit_template_entry *current_template_pos;
 	struct list_head curr_buff_list_head;
-	int template_len_matched;
 	
 	/*
 	 * The names_list is the list of all audit_names collected during this
