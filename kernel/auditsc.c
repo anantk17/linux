@@ -1370,7 +1370,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 
 	//Otherwise, we perform audit_log_end on all the buffers that we have captured till then
 	//and reset the 
-	matched = audit_filter_template(context);
+	matched = audit_template_enabled ? audit_filter_template(context) : false;
 
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
 	//we can allocate the memory without issues as we believe the slowdown is 

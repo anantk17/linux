@@ -94,7 +94,7 @@ static u32	audit_default = AUDIT_OFF;
 /* If auditing cannot proceed, audit_failure selects what happens. */
 static u32	audit_failure = AUDIT_FAIL_PRINTK;
 
-static u32	audit_template_enabled = AUDIT_OFF;
+u32	audit_template_enabled = AUDIT_OFF;
 
 /* private audit network namespace index */
 static unsigned int audit_net_id;

@@ -488,4 +488,8 @@ struct audit_rule_data {
 	char		buf[0];	/* string fields buffer */
 };
 
+/* struct audit_template_data {
+	__u32 		
+} */
+
 #endif /* _UAPI_LINUX_AUDIT_H_ */

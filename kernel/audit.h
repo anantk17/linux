@@ -230,6 +230,8 @@ struct audit_context {
 
 extern bool audit_ever_enabled;
 
+extern u32 audit_template_enabled;
+
 extern void audit_copy_inode(struct audit_names *name,
 			     const struct dentry *dentry,
 			     struct inode *inode);
