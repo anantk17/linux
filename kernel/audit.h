@@ -134,8 +134,17 @@ struct audit_template_entry{
 	struct audit_template_entry *next; //used for traversing children / sibling relations
 };
 
+struct audit_template{
+	int exec_len;
+	int template_len;
+	int seq_name;
+	char* exeName;
+	char* templateName;
+	struct audit_template_data* seq_array;
+};
+
 struct audit_template_data{
-	int syscallNumber;
+	unsigned int syscallNumber;
 	unsigned long argv [4];
 };
 

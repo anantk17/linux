@@ -71,6 +71,7 @@
 #define AUDIT_TTY_SET		1017	/* Set TTY auditing status */
 #define AUDIT_SET_FEATURE	1018	/* Turn an audit feature on or off */
 #define AUDIT_GET_FEATURE	1019	/* Get which features are enabled */
+#define AUDIT_ADD_TEMPLATE	1020	/* Add audit template rule */
 
 #define AUDIT_FIRST_USER_MSG	1100	/* Userspace messages mostly uninteresting to kernel */
 #define AUDIT_USER_AVC		1107	/* We filter this differently */
@@ -488,9 +489,13 @@ struct audit_rule_data {
 	char		buf[0];	/* string fields buffer */
 };
 
-/* struct audit_template_data {
-	__u32 		
-} */
+ struct audit_template_udata {
+	__u32 		execlen;
+	__u32		namelen;
+	__u32		buflen;
+	__u32		seqlen;
+	char buf[0];	/*fields are in order -> execLength, nameLength, sequences*/
+};
 
 
 #endif /* _UAPI_LINUX_AUDIT_H_ */

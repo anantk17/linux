@@ -948,19 +948,18 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 
 }
 
-static void add_audit_template(struct audit_template_data data[],
-					int length)
+static void add_audit_template(struct audit_template *template)
 {
 	int i = 0,j = 0;
 	struct audit_template_entry *next_entry ,*parent_entry = &audit_template_start;
 	//we start from the root node, and check if level + 1 nodes contain a match,
 	//if they do, we simply move forward from the matched node
 	
-	for(i ; i < length; i++){
+	for(; i < template->seq_name; i++){
 		bool children_match = false;
 		for(j = 0; j < parent_entry->num_children;i++){
 			next_entry = parent_entry->children_list;
-			if(template_entry_equal(next_entry,&data[i])){
+			if(template_entry_equal(next_entry,&template->seq_array[i])){
 				parent_entry = next_entry;
 				children_match = true;
 				break;
@@ -969,7 +968,7 @@ static void add_audit_template(struct audit_template_data data[],
 
 		if(!children_match){
 			//this means we need to add a new child node here
-			next_entry = create_audit_template_entry(data[i]);
+			next_entry = create_audit_template_entry(template->seq_array[i]);
 			next_entry->next = parent_entry->children_list;
 			parent_entry->children_list = next_entry;
 			parent_entry->num_children++;
@@ -979,6 +978,10 @@ static void add_audit_template(struct audit_template_data data[],
 	}
 
 	parent_entry->end_of_template = 1;
+	parent_entry->template_name = kmalloc(sizeof(template->template_len + 1),GFP_KERNEL);
+	strncpy(parent_entry->template_name, template->templateName, template->template_len + 1);
+
+	printk("audit template added \n");
 	return;
 }
 
@@ -1000,12 +1003,12 @@ static void traverse_template_automaton(struct audit_template_entry *entry){
 
 static void setup_audit_template(void)
 {
-	struct audit_template_data template_data[] = {
+	/* struct audit_template_data template_data[] = {
 		{ __NR_read, { 3, -1, -1, -1 } },
 		{ __NR_write, { 3, -1, -1, -1 } }
 	};
 
-	add_audit_template(template_data,2);
+	add_audit_template(); */
 
 	audit_templates_loaded = 1;
 
@@ -1239,6 +1242,38 @@ int audit_rule_change(int type, int seq, void *data, size_t datasz)
 			audit_remove_mark(entry->rule.exe);
 		audit_free_rule(entry);
 	}
+
+	return err;
+}
+
+struct audit_template* audit_template_udata_to_template(struct audit_template_udata* utemplate, size_t size){
+	struct audit_template *template = kzalloc(sizeof(struct audit_template),GFP_KERNEL);
+	template->exec_len = utemplate->execlen;
+	template->template_len = utemplate->namelen;
+	template->seq_name = utemplate->seqlen;
+
+	template->exeName = kzalloc(sizeof(char) * template->exec_len + 1,GFP_KERNEL);
+	memcpy(template->exeName,utemplate->buf,template->exec_len);
+	
+	template->templateName = kzalloc(sizeof(char) * template->template_len + 1,GFP_KERNEL);
+	memcpy(template->templateName,utemplate->buf + template->exec_len,template->template_len);
+	
+	template->seq_array = kzalloc(sizeof(struct audit_template_data)*template->seq_name,GFP_KERNEL);
+	memcpy(template->seq_array,utemplate->buf + template->exec_len + template->template_len,template->seq_name * sizeof(struct audit_template_data));
+
+	printk("memory copy completed \n");
+	return template;
+}
+
+int audit_add_template(int type, int seq,void *data, size_t datasz){
+	int err = 0;
+	struct audit_template *template;
+
+	template = audit_template_udata_to_template(data,datasz);
+	if(IS_ERR(template))
+		return PTR_ERR(template);
+	add_audit_template(template);
+	kfree(template);
 
 	return err;
 }
