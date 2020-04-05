@@ -63,11 +63,7 @@
 #include <linux/slab.h>
 
 #include <linux/audit.h>
-<<<<<<< HEAD
-
-=======
 #include <asm/unistd-common.h>
->>>>>>> custom-4.19.y-rt
 #include <net/sock.h>
 #include <net/netlink.h>
 #include <linux/skbuff.h>
@@ -98,11 +94,8 @@ static u32	audit_default = AUDIT_OFF;
 /* If auditing cannot proceed, audit_failure selects what happens. */
 static u32	audit_failure = AUDIT_FAIL_PRINTK;
 
-<<<<<<< HEAD
-=======
 u32	audit_template_enabled = AUDIT_OFF;
 
->>>>>>> custom-4.19.y-rt
 /* private audit network namespace index */
 static unsigned int audit_net_id;
 
@@ -225,10 +218,6 @@ struct audit_reply {
 	struct sk_buff *skb;
 };
 
-<<<<<<< HEAD
-=======
-
->>>>>>> custom-4.19.y-rt
 /**
  * auditd_test_task - Check to see if a given task is an audit daemon
  * @task: the task to check
@@ -441,15 +430,10 @@ static int audit_do_config_change(char *function_name, u32 *to_change, u32 new)
 	}
 
 	/* If we are allowed, make the change */
-<<<<<<< HEAD
-	if (allow_changes == 1)
-		*to_change = new;
-=======
 	if (allow_changes == 1){
 		*to_change = new;
 		printk("Values updated : %s from %u to %u",function_name,*to_change,new);
 	}
->>>>>>> custom-4.19.y-rt
 	/* Not allowed, update reason */
 	else if (rc == 0)
 		rc = -EPERM;
@@ -472,8 +456,6 @@ static int audit_set_backlog_wait_time(u32 timeout)
 				      &audit_backlog_wait_time, timeout);
 }
 
-<<<<<<< HEAD
-=======
 static int audit_set_template_enabled(u32 state)
 {
 	if (!audit_enabled)
@@ -483,7 +465,6 @@ static int audit_set_template_enabled(u32 state)
 				      &audit_template_enabled, state);
 }
 
->>>>>>> custom-4.19.y-rt
 static int audit_set_enabled(u32 state)
 {
 	int rc;
@@ -1065,10 +1046,7 @@ static int audit_netlink_ok(struct sk_buff *skb, u16 msg_type)
 	case AUDIT_TTY_SET:
 	case AUDIT_TRIM:
 	case AUDIT_MAKE_EQUIV:
-<<<<<<< HEAD
-=======
 	case AUDIT_ADD_TEMPLATE:
->>>>>>> custom-4.19.y-rt
 		/* Only support auditd and auditctl in initial pid namespace
 		 * for now. */
 		if (task_active_pid_ns(current) != &init_pid_ns)
@@ -1245,10 +1223,7 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		s.backlog		= skb_queue_len(&audit_queue);
 		s.feature_bitmap	= AUDIT_FEATURE_BITMAP_ALL;
 		s.backlog_wait_time	= audit_backlog_wait_time;
-<<<<<<< HEAD
-=======
 		s.template_enabled 	= audit_template_enabled;
->>>>>>> custom-4.19.y-rt
 		audit_send_reply(skb, seq, AUDIT_GET, 0, 0, &s, sizeof(s));
 		break;
 	}
@@ -1257,10 +1232,7 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		memset(&s, 0, sizeof(s));
 		/* guard against past and future API changes */
 		memcpy(&s, data, min_t(size_t, sizeof(s), nlmsg_len(nlh)));
-<<<<<<< HEAD
-=======
 		//printk("Audit set mask %u %u",s.mask,s.template_enabled);
->>>>>>> custom-4.19.y-rt
 		if (s.mask & AUDIT_STATUS_ENABLED) {
 			err = audit_set_enabled(s.enabled);
 			if (err < 0)
@@ -1356,14 +1328,11 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 			audit_log_config_change("lost", 0, lost, 1);
 			return lost;
 		}
-<<<<<<< HEAD
-=======
 		if (s.mask & AUDIT_TEMPLATE_ENABLED) {
 			err = audit_set_template_enabled(s.template_enabled);
 			if (err < 0)
 				return err;
 		}
->>>>>>> custom-4.19.y-rt
 		break;
 	}
 	case AUDIT_GET_FEATURE:
@@ -1420,8 +1389,6 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		}
 		err = audit_rule_change(msg_type, seq, data, nlmsg_len(nlh));
 		break;
-<<<<<<< HEAD
-=======
 	case AUDIT_ADD_TEMPLATE:
 		if(nlmsg_len(nlh) < sizeof(struct audit_template_udata)){
 			printk("length unexpected \n");
@@ -1430,7 +1397,6 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		printk("message length %d\n",nlmsg_len(nlh));
 		err = audit_add_template(msg_type,seq,data,nlmsg_len(nlh));
 		break;
->>>>>>> custom-4.19.y-rt
 	case AUDIT_LIST_RULES:
 		err = audit_list_rules_send(skb, seq);
 		break;
@@ -1544,10 +1510,7 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 	}
 	default:
 		err = -EINVAL;
-<<<<<<< HEAD
-=======
 		printk("couldn't match msgtype %d\n",msg_type);
->>>>>>> custom-4.19.y-rt
 		break;
 	}
 
@@ -1817,11 +1780,7 @@ struct audit_buffer *audit_log_start(struct audit_context *ctx, gfp_t gfp_mask,
 
 	if (audit_initialized != AUDIT_INITIALIZED)
 		return NULL;
-<<<<<<< HEAD
-
-=======
 	
->>>>>>> custom-4.19.y-rt
 	if (unlikely(!audit_filter(type, AUDIT_FILTER_EXCLUDE)))
 		return NULL;
 
@@ -2348,19 +2307,12 @@ void audit_log_task_info(struct audit_buffer *ab, struct task_struct *tsk)
 	cred = current_cred();
 	tty = audit_get_tty(tsk);
 	audit_log_format(ab,
-<<<<<<< HEAD
-			 " ppid=%d pid=%d auid=%u uid=%u gid=%u"
-=======
 			 " ppid=%d pid=%d tid=%d auid=%u uid=%u gid=%u"
->>>>>>> custom-4.19.y-rt
 			 " euid=%u suid=%u fsuid=%u"
 			 " egid=%u sgid=%u fsgid=%u tty=%s ses=%u",
 			 task_ppid_nr(tsk),
 			 task_tgid_nr(tsk),
-<<<<<<< HEAD
-=======
 			 task_pid_nr(tsk),
->>>>>>> custom-4.19.y-rt
 			 from_kuid(&init_user_ns, audit_get_loginuid(tsk)),
 			 from_kuid(&init_user_ns, cred->uid),
 			 from_kgid(&init_user_ns, cred->gid),

@@ -113,12 +113,9 @@ void audit_free_rule_rcu(struct rcu_head *head)
 	audit_free_rule(e);
 }
 
-<<<<<<< HEAD
-=======
 struct audit_template_entry audit_template_start;
 int audit_templates_loaded = 0;
 
->>>>>>> custom-4.19.y-rt
 /* Initialize an audit filterlist entry. */
 static inline struct audit_entry *audit_init_entry(u32 field_count)
 {
@@ -921,8 +918,6 @@ out:
 static u64 prio_low = ~0ULL/2;
 static u64 prio_high = ~0ULL/2 - 1;
 
-<<<<<<< HEAD
-=======
 int template_length;
 
 static bool template_entry_equal(struct audit_template_entry *entry1, struct audit_template_data *entry2){
@@ -1023,7 +1018,6 @@ static void setup_audit_template(void)
 
 }
 
->>>>>>> custom-4.19.y-rt
 /* Add rule to given filterlist if not a duplicate. */
 static inline int audit_add_rule(struct audit_entry *entry)
 {
@@ -1043,11 +1037,7 @@ static inline int audit_add_rule(struct audit_entry *entry)
 		dont_count = 1;
 	}
 #endif
-<<<<<<< HEAD
-
-=======
 	setup_audit_template();
->>>>>>> custom-4.19.y-rt
 	mutex_lock(&audit_filter_mutex);
 	e = audit_find_rule(entry, &list);
 	if (e) {
@@ -1256,8 +1246,6 @@ int audit_rule_change(int type, int seq, void *data, size_t datasz)
 	return err;
 }
 
-<<<<<<< HEAD
-=======
 struct audit_template* audit_template_udata_to_template(struct audit_template_udata* utemplate, size_t size){
 	struct audit_template *template = kzalloc(sizeof(struct audit_template),GFP_KERNEL);
 	template->exec_len = utemplate->execlen;
@@ -1290,7 +1278,6 @@ int audit_add_template(int type, int seq,void *data, size_t datasz){
 	return err;
 }
 
->>>>>>> custom-4.19.y-rt
 /**
  * audit_list_rules_send - list the audit rules
  * @request_skb: skb of request we are replying to (used to target the reply)
@@ -1532,8 +1519,6 @@ unlock_and_return:
 	return ret;
 }
 
-<<<<<<< HEAD
-=======
 bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
@@ -1659,7 +1644,6 @@ bool audit_filter_template(struct audit_context *ctx)
 	return false;	//default action should always be to say we couldn't find match in template -> lets things take the normal course.
 }
 
->>>>>>> custom-4.19.y-rt
 static int update_lsm_rule(struct audit_krule *r)
 {
 	struct audit_entry *entry = container_of(r, struct audit_entry, rule);
@@ -1716,8 +1700,6 @@ int audit_update_lsm_rules(void)
 
 	return err;
 }
-<<<<<<< HEAD
-=======
 
 void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab){
 	//We need to restrict the length of these matches to save kernel memory
@@ -1730,4 +1712,3 @@ void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab){
 	list_add_tail(&(new_buffer->list), &ctx->curr_buff_list_head);
 	return;
 }
->>>>>>> custom-4.19.y-rt

@@ -30,12 +30,9 @@
  * a name dynamically and also add those to the list anchored by names_list. */
 #define AUDIT_NAMES	5
 
-<<<<<<< HEAD
-=======
 //This is the hard limit on the number of templates we want to hold in memory
 #define NUM_AUDIT_TEMPLATE_MAX 5
 
->>>>>>> custom-4.19.y-rt
 /* At task start time, the audit_state is set in the audit_context using
    a per-task filter.  At syscall entry, the audit_state is augmented by
    the syscall filter. */
@@ -112,8 +109,6 @@ struct audit_proctitle {
 	char	*value;	/* the cmdline field */
 };
 
-<<<<<<< HEAD
-=======
 struct audit_buffer_list_entry{
 	struct audit_buffer *buffer;
 	
@@ -156,7 +151,6 @@ struct audit_template_data{
 extern struct audit_template_entry audit_template_start;
 extern int audit_templates_loaded;
 
->>>>>>> custom-4.19.y-rt
 /* The per-task audit context. */
 struct audit_context {
 	int		    dummy;	/* must be the first element */
@@ -169,13 +163,10 @@ struct audit_context {
 	long		    return_code;/* syscall return code */
 	u64		    prio;
 	int		    return_valid; /* return code is valid */
-<<<<<<< HEAD
-=======
 	
 	struct audit_template_entry *current_template_pos;
 	struct list_head curr_buff_list_head;
 	
->>>>>>> custom-4.19.y-rt
 	/*
 	 * The names_list is the list of all audit_names collected during this
 	 * syscall.  The first AUDIT_NAMES entries in the names_list will
@@ -268,12 +259,9 @@ struct audit_context {
 
 extern bool audit_ever_enabled;
 
-<<<<<<< HEAD
-=======
 extern u32 audit_template_enabled;
 
 
->>>>>>> custom-4.19.y-rt
 extern void audit_copy_inode(struct audit_names *name,
 			     const struct dentry *dentry,
 			     struct inode *inode);
@@ -396,13 +384,10 @@ extern u32 audit_sig_sid;
 
 extern int audit_filter(int msgtype, unsigned int listtype);
 
-<<<<<<< HEAD
-=======
 extern bool audit_filter_template(struct audit_context *ctx);
 extern void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab);
 extern void free_buffered_logs(struct audit_context *ctx);
 
->>>>>>> custom-4.19.y-rt
 #ifdef CONFIG_AUDITSYSCALL
 extern int audit_signal_info(int sig, struct task_struct *t);
 extern void audit_filter_inodes(struct task_struct *tsk, struct audit_context *ctx);
