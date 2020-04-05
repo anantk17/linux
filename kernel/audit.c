@@ -1689,7 +1689,7 @@ static int __init audit_backlog_limit_set(char *str)
 }
 __setup("audit_backlog_limit=", audit_backlog_limit_set);
 
-static void audit_buffer_free(struct audit_buffer *ab)
+void audit_buffer_free(struct audit_buffer *ab)
 {
 	if (!ab)
 		return;

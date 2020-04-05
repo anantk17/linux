@@ -399,3 +399,4 @@ extern struct list_head *audit_killed_trees(void);
 
 extern void audit_ctl_lock(void);
 extern void audit_ctl_unlock(void);
+extern void audit_buffer_free(struct audit_buffer* ab);

@@ -1257,12 +1257,20 @@ struct audit_template* audit_template_udata_to_template(struct audit_template_ud
 	
 	template->templateName = kzalloc(sizeof(char) * template->template_len + 1,GFP_KERNEL);
 	memcpy(template->templateName,utemplate->buf + template->exec_len,template->template_len);
-	
+
 	template->seq_array = kzalloc(sizeof(struct audit_template_data)*template->seq_name,GFP_KERNEL);
 	memcpy(template->seq_array,utemplate->buf + template->exec_len + template->template_len,template->seq_name * sizeof(struct audit_template_data));
-
-	printk("memory copy completed \n");
+	
 	return template;
+}
+
+void free_audit_template(struct audit_template* template){
+	if(!template)
+		return;
+	
+	kfree(template->exeName);
+	kfree(template->seq_array);
+	kfree(template->templateName);
 }
 
 int audit_add_template(int type, int seq,void *data, size_t datasz){
@@ -1523,18 +1531,18 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
 	bool match = false;
-	printk("checking for match %d, %d, %d\n",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
+	//printk("checking for match %d, %d, %d\n",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
 
 	if(curr_event->syscallNumber == ctx->major){
 		switch(ctx->major){
 			case __NR_read: case __NR_write:
-				printk("checking syscall args: %lu %lu\n", curr_event->argv[0],ctx->argv[0]);
+				//printk("checking syscall args: %lu %lu\n", curr_event->argv[0],ctx->argv[0]);
 				match = (curr_event->argv[0] == ctx->argv[0]);
 				break;
 		}
 	}
 
-	printk("match %d\n",match);
+	//printk("match %d\n",match);
 	return match;
 }
 
@@ -1564,6 +1572,7 @@ void free_buffered_logs(struct audit_context *ctx){
 		curr_entry = list_entry(curr_audit_log_head,
 					struct audit_buffer_list_entry, list);
 		list_del(curr_audit_log_head);
+		audit_buffer_free(curr_entry->buffer);
 		kfree(curr_entry);
 	}
 	list_del_init(&ctx->curr_buff_list_head); //reset and initialize buffer list head
@@ -1632,7 +1641,7 @@ bool audit_filter_template(struct audit_context *ctx)
 
 			if(!match_found){
 				//if out previous position wasn't a valid template ending, means we failed to find a match
-				printk("template matching failed, need to reset ptr position\n");
+				//printk("template matching failed, need to reset ptr position\n");
 				flush_buffered_logs(ctx);
 				reset_curr_template_pos(ctx);
 			}
@@ -1708,7 +1717,6 @@ void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab){
 	struct audit_buffer_list_entry *new_buffer =
 		kmalloc(sizeof(struct audit_buffer_list_entry), GFP_KERNEL);
 	new_buffer->buffer = ab;
-
 	list_add_tail(&(new_buffer->list), &ctx->curr_buff_list_head);
 	return;
 }
