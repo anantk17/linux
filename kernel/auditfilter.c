@@ -113,6 +113,12 @@ void audit_free_rule_rcu(struct rcu_head *head)
 	audit_free_rule(e);
 }
 
+<<<<<<< HEAD
+=======
+struct audit_template_entry audit_template_start;
+int audit_templates_loaded = 0;
+
+>>>>>>> custom-4.19.y-rt
 /* Initialize an audit filterlist entry. */
 static inline struct audit_entry *audit_init_entry(u32 field_count)
 {
@@ -915,6 +921,109 @@ out:
 static u64 prio_low = ~0ULL/2;
 static u64 prio_high = ~0ULL/2 - 1;
 
+<<<<<<< HEAD
+=======
+int template_length;
+
+static bool template_entry_equal(struct audit_template_entry *entry1, struct audit_template_data *entry2){
+	return entry1->syscallNumber == entry2->syscallNumber &&
+	       entry1->argv[0] == entry2->argv[0] &&
+	       entry1->argv[1] == entry2->argv[1] &&
+	       entry1->argv[2] == entry2->argv[2] &&
+	       entry1->argv[3] == entry2->argv[3];
+}
+
+static struct audit_template_entry* create_audit_template_entry(struct audit_template_data data){
+	struct audit_template_entry* new_entry = kmalloc(sizeof(struct audit_template_entry),GFP_KERNEL);
+	new_entry->syscallNumber= data.syscallNumber;
+	new_entry->argv[0] = data.argv[0];
+	new_entry->argv[1] = data.argv[1];
+	new_entry->argv[2] = data.argv[2];
+	new_entry->argv[3] = data.argv[3];
+
+	new_entry->children_list = NULL;
+	new_entry->num_children = 0;
+	new_entry->end_of_template = false;
+	new_entry->next = NULL;
+	
+	new_entry->template_name = kmalloc(20,GFP_KERNEL);
+	strncpy(new_entry->template_name,"Template 1",20);
+
+	return new_entry;
+
+}
+
+static void add_audit_template(struct audit_template *template)
+{
+	int i = 0,j = 0;
+	struct audit_template_entry *next_entry ,*parent_entry = &audit_template_start;
+	//we start from the root node, and check if level + 1 nodes contain a match,
+	//if they do, we simply move forward from the matched node
+	
+	for(; i < template->seq_name; i++){
+		bool children_match = false;
+		for(j = 0; j < parent_entry->num_children;i++){
+			next_entry = parent_entry->children_list;
+			if(template_entry_equal(next_entry,&template->seq_array[i])){
+				parent_entry = next_entry;
+				children_match = true;
+				break;
+			}
+		}
+
+		if(!children_match){
+			//this means we need to add a new child node here
+			next_entry = create_audit_template_entry(template->seq_array[i]);
+			next_entry->next = parent_entry->children_list;
+			parent_entry->children_list = next_entry;
+			parent_entry->num_children++;
+			parent_entry = next_entry;
+			printk("new node added %px, %d\n",parent_entry,parent_entry->syscallNumber);
+		}
+	}
+
+	parent_entry->end_of_template = 1;
+	parent_entry->template_name = kmalloc(sizeof(template->template_len + 1),GFP_KERNEL);
+	strncpy(parent_entry->template_name, template->templateName, template->template_len + 1);
+
+	printk("audit template added \n");
+	return;
+}
+
+static void traverse_template_automaton(struct audit_template_entry *entry){
+	struct audit_template_entry *curr_entry = entry;
+	if(curr_entry == NULL){
+		printk("NULL entry encountered\n");
+		return;
+	}
+	printk("curr_entry %px, child_entry %px, syscall : %d, argv 0 : %lu, eot : %d\n",curr_entry,curr_entry->children_list,curr_entry->syscallNumber,curr_entry->argv[0],curr_entry->end_of_template);
+	
+	
+	struct audit_template_entry *child = curr_entry->children_list;
+	while(child!=NULL){
+		traverse_template_automaton(child);
+		child = child->next;
+	}
+}
+
+static void setup_audit_template(void)
+{
+	/* struct audit_template_data template_data[] = {
+		{ __NR_read, { 3, -1, -1, -1 } },
+		{ __NR_write, { 3, -1, -1, -1 } }
+	};
+
+	add_audit_template(); */
+
+	audit_templates_loaded = 1;
+
+	printk("Audit template start node %px",&audit_template_start);
+
+	traverse_template_automaton(&audit_template_start);
+
+}
+
+>>>>>>> custom-4.19.y-rt
 /* Add rule to given filterlist if not a duplicate. */
 static inline int audit_add_rule(struct audit_entry *entry)
 {
@@ -934,7 +1043,11 @@ static inline int audit_add_rule(struct audit_entry *entry)
 		dont_count = 1;
 	}
 #endif
+<<<<<<< HEAD
 
+=======
+	setup_audit_template();
+>>>>>>> custom-4.19.y-rt
 	mutex_lock(&audit_filter_mutex);
 	e = audit_find_rule(entry, &list);
 	if (e) {
@@ -1143,6 +1256,41 @@ int audit_rule_change(int type, int seq, void *data, size_t datasz)
 	return err;
 }
 
+<<<<<<< HEAD
+=======
+struct audit_template* audit_template_udata_to_template(struct audit_template_udata* utemplate, size_t size){
+	struct audit_template *template = kzalloc(sizeof(struct audit_template),GFP_KERNEL);
+	template->exec_len = utemplate->execlen;
+	template->template_len = utemplate->namelen;
+	template->seq_name = utemplate->seqlen;
+
+	template->exeName = kzalloc(sizeof(char) * template->exec_len + 1,GFP_KERNEL);
+	memcpy(template->exeName,utemplate->buf,template->exec_len);
+	
+	template->templateName = kzalloc(sizeof(char) * template->template_len + 1,GFP_KERNEL);
+	memcpy(template->templateName,utemplate->buf + template->exec_len,template->template_len);
+	
+	template->seq_array = kzalloc(sizeof(struct audit_template_data)*template->seq_name,GFP_KERNEL);
+	memcpy(template->seq_array,utemplate->buf + template->exec_len + template->template_len,template->seq_name * sizeof(struct audit_template_data));
+
+	printk("memory copy completed \n");
+	return template;
+}
+
+int audit_add_template(int type, int seq,void *data, size_t datasz){
+	int err = 0;
+	struct audit_template *template;
+
+	template = audit_template_udata_to_template(data,datasz);
+	if(IS_ERR(template))
+		return PTR_ERR(template);
+	add_audit_template(template);
+	kfree(template);
+
+	return err;
+}
+
+>>>>>>> custom-4.19.y-rt
 /**
  * audit_list_rules_send - list the audit rules
  * @request_skb: skb of request we are replying to (used to target the reply)
@@ -1384,6 +1532,134 @@ unlock_and_return:
 	return ret;
 }
 
+<<<<<<< HEAD
+=======
+bool match_audit_template_event(struct audit_template_entry *curr_event,
+				struct audit_context *ctx)
+{
+	bool match = false;
+	printk("checking for match %d, %d, %d\n",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
+
+	if(curr_event->syscallNumber == ctx->major){
+		switch(ctx->major){
+			case __NR_read: case __NR_write:
+				printk("checking syscall args: %lu %lu\n", curr_event->argv[0],ctx->argv[0]);
+				match = (curr_event->argv[0] == ctx->argv[0]);
+				break;
+		}
+	}
+
+	printk("match %d\n",match);
+	return match;
+}
+
+void log_template_end(struct audit_context *ctx)
+{	
+	free_buffered_logs(ctx);
+	audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,"finished processing template : %s", ctx->current_template_pos->template_name);
+}
+
+void flush_buffered_logs(struct audit_context *ctx)
+{
+	struct audit_buffer_list_entry *curr_entry;
+
+	list_for_each_entry(curr_entry,&ctx->curr_buff_list_head,list) {
+		//ending audit log inserts it into the kauditd queue
+		audit_log_end(curr_entry->buffer);
+	}
+	free_buffered_logs(ctx);
+}
+
+void free_buffered_logs(struct audit_context *ctx){
+	struct list_head *curr_audit_log_head, *temp_head;
+	struct audit_buffer_list_entry *curr_entry;
+
+	list_for_each_safe (curr_audit_log_head, temp_head,
+			    &ctx->curr_buff_list_head) {
+		curr_entry = list_entry(curr_audit_log_head,
+					struct audit_buffer_list_entry, list);
+		list_del(curr_audit_log_head);
+		kfree(curr_entry);
+	}
+	list_del_init(&ctx->curr_buff_list_head); //reset and initialize buffer list head
+}
+
+static void inline reset_curr_template_pos(struct audit_context *ctx){
+	ctx->current_template_pos = &audit_template_start;
+}
+
+static inline bool has_template_ended(struct audit_template_entry *event){
+	return event->end_of_template;
+}
+
+static bool check_next_entries(struct audit_context *ctx){
+	bool match_found = false;
+	struct audit_template_entry *next_event = ctx->current_template_pos->children_list;
+	int num_children = ctx->current_template_pos->num_children;
+	int i;
+	for(i = 0; i< num_children; i++){
+		if(next_event!= NULL && match_audit_template_event(next_event,ctx)){
+			ctx->current_template_pos = next_event;
+			match_found = true;
+			break;
+		}
+		next_event = next_event->next;
+	}
+	return match_found;
+}
+
+bool audit_filter_template(struct audit_context *ctx)
+{
+	struct audit_template_entry *exp_curr_event;
+
+	if (!(ctx->in_syscall) || ctx == NULL || ctx->current_template_pos == NULL) {
+		return false;
+	}
+
+	exp_curr_event = ctx->current_template_pos;
+	//if we match the syscall directly, then we are good,
+	//we remain at the same position, to account for repetitions
+	//if we match the current template, then we are good to continue
+	if (match_audit_template_event(exp_curr_event, ctx)) {
+		return true;
+	} //otherwise, we want to go check the next options
+	else {
+		struct audit_template_entry *next_event;
+		bool match_found = false;
+
+		//2 things can happen now, either we find a match or we don't
+		//in case we find a match, we don't need to do anything right now
+		//in case we don't find a match, we need to flush anything we found till now.
+		match_found = check_next_entries(ctx);
+
+		//if we are here, that means we have failed at matching the current and the next events
+		//this denotes that we have a mismatch, or the template has ended.
+		//if the template has ended, we can refer to the current_template_node to see if it occurs at the end of the template
+		//otherwise, we have a mismatch on our hands
+		if(!match_found){
+			//if we ended up here, it means that we haven't found a match for the current syscall
+			//in case our previous state was a valid end to a template, we need to log the end of the template there
+			if(has_template_ended(exp_curr_event)){
+				log_template_end(ctx);
+				reset_curr_template_pos(ctx);
+				match_found = check_next_entries(ctx);
+			}
+
+			if(!match_found){
+				//if out previous position wasn't a valid template ending, means we failed to find a match
+				printk("template matching failed, need to reset ptr position\n");
+				flush_buffered_logs(ctx);
+				reset_curr_template_pos(ctx);
+			}
+		}
+
+		return match_found;
+
+	}
+	return false;	//default action should always be to say we couldn't find match in template -> lets things take the normal course.
+}
+
+>>>>>>> custom-4.19.y-rt
 static int update_lsm_rule(struct audit_krule *r)
 {
 	struct audit_entry *entry = container_of(r, struct audit_entry, rule);
@@ -1440,3 +1716,18 @@ int audit_update_lsm_rules(void)
 
 	return err;
 }
+<<<<<<< HEAD
+=======
+
+void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab){
+	//We need to restrict the length of these matches to save kernel memory
+	//We can setup a config per process to enforce this restriction
+	//Additionally, we can allocate space for this list beforehand to save on time spent in malloc
+	struct audit_buffer_list_entry *new_buffer =
+		kmalloc(sizeof(struct audit_buffer_list_entry), GFP_KERNEL);
+	new_buffer->buffer = ab;
+
+	list_add_tail(&(new_buffer->list), &ctx->curr_buff_list_head);
+	return;
+}
+>>>>>>> custom-4.19.y-rt

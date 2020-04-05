@@ -71,6 +71,7 @@
 #define AUDIT_TTY_SET		1017	/* Set TTY auditing status */
 #define AUDIT_SET_FEATURE	1018	/* Turn an audit feature on or off */
 #define AUDIT_GET_FEATURE	1019	/* Get which features are enabled */
+#define AUDIT_ADD_TEMPLATE	1020	/* Add audit template rule */
 
 #define AUDIT_FIRST_USER_MSG	1100	/* Userspace messages mostly uninteresting to kernel */
 #define AUDIT_USER_AVC		1107	/* We filter this differently */
@@ -335,6 +336,7 @@ enum {
 #define AUDIT_STATUS_BACKLOG_LIMIT	0x0010
 #define AUDIT_STATUS_BACKLOG_WAIT_TIME	0x0020
 #define AUDIT_STATUS_LOST		0x0040
+#define AUDIT_TEMPLATE_ENABLED	0x0080
 
 #define AUDIT_FEATURE_BITMAP_BACKLOG_LIMIT	0x00000001
 #define AUDIT_FEATURE_BITMAP_BACKLOG_WAIT_TIME	0x00000002
@@ -445,6 +447,7 @@ struct audit_status {
 		__u32	feature_bitmap;	/* bitmap of kernel audit features */
 	};
 	__u32		backlog_wait_time;/* message queue wait timeout */
+	__u32		template_enabled; /*1 = templating enabled, 0 = templating disabled*/
 };
 
 struct audit_features {
@@ -485,5 +488,14 @@ struct audit_rule_data {
 	__u32		buflen;	/* total length of string fields */
 	char		buf[0];	/* string fields buffer */
 };
+
+ struct audit_template_udata {
+	__u32 		execlen;
+	__u32		namelen;
+	__u32		buflen;
+	__u32		seqlen;
+	char buf[0];	/*fields are in order -> execLength, nameLength, sequences*/
+};
+
 
 #endif /* _UAPI_LINUX_AUDIT_H_ */
