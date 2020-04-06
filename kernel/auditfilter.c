@@ -1559,6 +1559,7 @@ void flush_buffered_logs(struct audit_context *ctx)
 	list_for_each_entry(curr_entry,&ctx->curr_buff_list_head,list) {
 		//ending audit log inserts it into the kauditd queue
 		audit_log_end(curr_entry->buffer);
+		curr_entry->buffer = NULL; //buffer is freed when audit_log_end completes succesfully;set it to NULL to avoid use after free
 	}
 	free_buffered_logs(ctx);
 }
@@ -1573,6 +1574,7 @@ void free_buffered_logs(struct audit_context *ctx){
 					struct audit_buffer_list_entry, list);
 		list_del(curr_audit_log_head);
 		audit_buffer_free(curr_entry->buffer);
+		curr_entry->buffer = NULL;
 		kfree(curr_entry);
 	}
 	list_del_init(&ctx->curr_buff_list_head); //reset and initialize buffer list head
