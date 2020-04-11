@@ -137,7 +137,7 @@ struct audit_template_entry{
 struct audit_template{
 	int exec_len;
 	int template_len;
-	int seq_name;
+	int seq_len;
 	char* exeName;
 	char* templateName;
 	struct audit_template_data* seq_array;

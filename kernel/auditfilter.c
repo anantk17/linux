@@ -113,7 +113,7 @@ void audit_free_rule_rcu(struct rcu_head *head)
 	audit_free_rule(e);
 }
 
-struct audit_template_entry audit_template_start;
+struct audit_template_entry audit_template_start = {-1, {-1,-1,-1,-1},0,NULL,0,NULL,NULL};
 int audit_templates_loaded = 0;
 
 /* Initialize an audit filterlist entry. */
@@ -921,6 +921,11 @@ static u64 prio_high = ~0ULL/2 - 1;
 int template_length;
 
 static bool template_entry_equal(struct audit_template_entry *entry1, struct audit_template_data *entry2){
+	if(entry1 == NULL || entry2 == NULL){
+		printk("One of the template entries is NULL\n");
+		return false;
+	}
+	printk("chceking template entries for match\n");
 	return entry1->syscallNumber == entry2->syscallNumber &&
 	       entry1->argv[0] == entry2->argv[0] &&
 	       entry1->argv[1] == entry2->argv[1] &&
@@ -941,8 +946,8 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 	new_entry->end_of_template = false;
 	new_entry->next = NULL;
 	
-	new_entry->template_name = kmalloc(20,GFP_KERNEL);
-	strncpy(new_entry->template_name,"Template 1",20);
+	new_entry->template_name = NULL;
+	printk("audit template entry created \n");
 
 	return new_entry;
 
@@ -954,10 +959,11 @@ static void add_audit_template(struct audit_template *template)
 	struct audit_template_entry *next_entry ,*parent_entry = &audit_template_start;
 	//we start from the root node, and check if level + 1 nodes contain a match,
 	//if they do, we simply move forward from the matched node
-	
-	for(; i < template->seq_name; i++){
+	printk("Trying to add template to kernel prefix tree %s %d %d %px \n",template->templateName,template->seq_len,template->template_len,template->seq_array);
+	printk("template start %px, %d, %px \n",parent_entry,parent_entry->num_children,parent_entry->children_list);
+	for(; i < template->seq_len; i++){
 		bool children_match = false;
-		for(j = 0; j < parent_entry->num_children;i++){
+		for(j = 0; j < parent_entry->num_children;j++){
 			next_entry = parent_entry->children_list;
 			if(template_entry_equal(next_entry,&template->seq_array[i])){
 				parent_entry = next_entry;
@@ -967,6 +973,7 @@ static void add_audit_template(struct audit_template *template)
 		}
 
 		if(!children_match){
+			printk("Trying to create a new node, we know there is no repetition %s\n",template->templateName);
 			//this means we need to add a new child node here
 			next_entry = create_audit_template_entry(template->seq_array[i]);
 			next_entry->next = parent_entry->children_list;
@@ -1250,7 +1257,7 @@ struct audit_template* audit_template_udata_to_template(struct audit_template_ud
 	struct audit_template *template = kzalloc(sizeof(struct audit_template),GFP_KERNEL);
 	template->exec_len = utemplate->execlen;
 	template->template_len = utemplate->namelen;
-	template->seq_name = utemplate->seqlen;
+	template->seq_len = utemplate->seqlen;
 
 	template->exeName = kzalloc(sizeof(char) * template->exec_len + 1,GFP_KERNEL);
 	memcpy(template->exeName,utemplate->buf,template->exec_len);
@@ -1258,9 +1265,17 @@ struct audit_template* audit_template_udata_to_template(struct audit_template_ud
 	template->templateName = kzalloc(sizeof(char) * template->template_len + 1,GFP_KERNEL);
 	memcpy(template->templateName,utemplate->buf + template->exec_len,template->template_len);
 
-	template->seq_array = kzalloc(sizeof(struct audit_template_data)*template->seq_name,GFP_KERNEL);
-	memcpy(template->seq_array,utemplate->buf + template->exec_len + template->template_len,template->seq_name * sizeof(struct audit_template_data));
+	template->seq_array = kzalloc(sizeof(struct audit_template_data)*template->seq_len,GFP_KERNEL);
+	memcpy(template->seq_array,utemplate->buf + template->exec_len + template->template_len,template->seq_len * sizeof(struct audit_template_data));
 	
+	printk("Printing out contents of template sequence\n");
+	
+	int i =0;
+	for(;i < template->seq_len;i++){
+		printk("template seq syscall no. %d\n",template->seq_array[i].syscallNumber);
+	}
+
+
 	return template;
 }
 
@@ -1280,8 +1295,9 @@ int audit_add_template(int type, int seq,void *data, size_t datasz){
 	template = audit_template_udata_to_template(data,datasz);
 	if(IS_ERR(template))
 		return PTR_ERR(template);
+	printk("Created template object %s %d %d %px \n",template->templateName,template->seq_len,template->template_len,template->seq_array);
 	add_audit_template(template);
-	kfree(template);
+	free_audit_template(template);
 
 	return err;
 }
