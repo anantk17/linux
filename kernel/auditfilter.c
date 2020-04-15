@@ -1551,7 +1551,7 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 
 	if(curr_event->syscallNumber == ctx->major){
 		switch(ctx->major){
-			case __NR_read: case __NR_write:
+			case __NR_read: case __NR_write: case __NR_pread64:
 				//printk("checking syscall args: %lu %lu\n", curr_event->argv[0],ctx->argv[0]);
 				match = (curr_event->argv[0] == ctx->argv[0]);
 				break;
