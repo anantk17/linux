@@ -120,6 +120,7 @@ struct audit_template_entry{
 	int syscallNumber;
 	//need to add syscall related context here, probably syscall arguments
 	unsigned long argv[4]; //store syscall arguments
+	unsigned long delta;   //store delta wrt previous syscall, -1 if NA
 	
 	bool end_of_template;
 	char* template_name;
@@ -138,6 +139,7 @@ struct audit_template{
 	int exec_len;
 	int template_len;
 	int seq_len;
+	u64 tpl_time;
 	char* exeName;
 	char* templateName;
 	struct audit_template_data* seq_array;
@@ -146,6 +148,7 @@ struct audit_template{
 struct audit_template_data{
 	unsigned int syscallNumber;
 	unsigned long argv [4];
+	unsigned long delta;
 };
 
 extern struct audit_template_entry audit_template_start;

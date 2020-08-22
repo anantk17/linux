@@ -494,7 +494,8 @@ struct audit_rule_data {
 	__u32		namelen;
 	__u32		buflen;
 	__u32		seqlen;
-	char buf[0];	/*fields are in order -> execLength, nameLength, sequences*/
+	__u64		tpl_time;
+	char buf[0];	/*fields are in order -> execName, tplName, sequences*/
 };
 
 

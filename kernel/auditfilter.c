@@ -1258,6 +1258,7 @@ struct audit_template* audit_template_udata_to_template(struct audit_template_ud
 	template->exec_len = utemplate->execlen;
 	template->template_len = utemplate->namelen;
 	template->seq_len = utemplate->seqlen;
+	template->tpl_time = utemplate->tpl_time;
 
 	template->exeName = kzalloc(sizeof(char) * template->exec_len + 1,GFP_KERNEL);
 	memcpy(template->exeName,utemplate->buf,template->exec_len);
@@ -1269,10 +1270,10 @@ struct audit_template* audit_template_udata_to_template(struct audit_template_ud
 	memcpy(template->seq_array,utemplate->buf + template->exec_len + template->template_len,template->seq_len * sizeof(struct audit_template_data));
 	
 	printk("Printing out contents of template sequence\n");
-	
+	printk("template duration : %llu\n",template->tpl_time);
 	int i =0;
 	for(;i < template->seq_len;i++){
-		printk("template seq syscall no. %d\n",template->seq_array[i].syscallNumber);
+		printk("template seq syscall no: %d delta : %lu\n",template->seq_array[i].syscallNumber, template->seq_array[i].delta);
 	}
 
 
