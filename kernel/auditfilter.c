@@ -113,7 +113,7 @@ void audit_free_rule_rcu(struct rcu_head *head)
 	audit_free_rule(e);
 }
 
-struct audit_template_entry audit_template_start = {-1, {-1,-1,-1,-1},0,NULL,0,NULL,NULL};
+struct audit_template_entry audit_template_start = {-1, {-1,-1,-1,-1},0,0,NULL,0,NULL,NULL};
 int audit_templates_loaded = 0;
 
 /* Initialize an audit filterlist entry. */
@@ -925,12 +925,14 @@ static bool template_entry_equal(struct audit_template_entry *entry1, struct aud
 		printk("One of the template entries is NULL\n");
 		return false;
 	}
-	printk("chceking template entries for match\n");
+	//TODO: Add logic to check for command name here
+	printk("checking template entries for match\n");
 	return entry1->syscallNumber == entry2->syscallNumber &&
 	       entry1->argv[0] == entry2->argv[0] &&
 	       entry1->argv[1] == entry2->argv[1] &&
 	       entry1->argv[2] == entry2->argv[2] &&
 	       entry1->argv[3] == entry2->argv[3];
+
 }
 
 static struct audit_template_entry* create_audit_template_entry(struct audit_template_data data){
@@ -940,6 +942,7 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 	new_entry->argv[1] = data.argv[1];
 	new_entry->argv[2] = data.argv[2];
 	new_entry->argv[3] = data.argv[3];
+	new_entry->delta = data.delta;
 
 	new_entry->children_list = NULL;
 	new_entry->num_children = 0;
@@ -957,31 +960,18 @@ static void add_audit_template(struct audit_template *template)
 {
 	int i = 0,j = 0;
 	struct audit_template_entry *next_entry ,*parent_entry = &audit_template_start;
-	//we start from the root node, and check if level + 1 nodes contain a match,
-	//if they do, we simply move forward from the matched node
+	//We have abandonded the prefix tree approach and now add all nodes directly at the head
 	printk("Trying to add template to kernel prefix tree %s %d %d %px \n",template->templateName,template->seq_len,template->template_len,template->seq_array);
 	printk("template start %px, %d, %px \n",parent_entry,parent_entry->num_children,parent_entry->children_list);
 	for(; i < template->seq_len; i++){
-		bool children_match = false;
-		for(j = 0; j < parent_entry->num_children;j++){
-			next_entry = parent_entry->children_list;
-			if(template_entry_equal(next_entry,&template->seq_array[i])){
-				parent_entry = next_entry;
-				children_match = true;
-				break;
-			}
-		}
-
-		if(!children_match){
-			printk("Trying to create a new node, we know there is no repetition %s\n",template->templateName);
-			//this means we need to add a new child node here
-			next_entry = create_audit_template_entry(template->seq_array[i]);
-			next_entry->next = parent_entry->children_list;
-			parent_entry->children_list = next_entry;
-			parent_entry->num_children++;
-			parent_entry = next_entry;
-			printk("new node added %px, %d\n",parent_entry,parent_entry->syscallNumber);
-		}
+		printk("Trying to create a new node, we know there is no repetition %s\n",template->templateName);
+		//this means we need to add a new child node here
+		next_entry = create_audit_template_entry(template->seq_array[i]);
+		next_entry->next = parent_entry->children_list;
+		parent_entry->children_list = next_entry;
+		parent_entry->num_children++;
+		parent_entry = next_entry;
+		printk("new node added %px, %d %ld\n",parent_entry,parent_entry->syscallNumber, parent_entry->delta);
 	}
 
 	parent_entry->end_of_template = 1;
@@ -998,7 +988,7 @@ static void traverse_template_automaton(struct audit_template_entry *entry){
 		printk("NULL entry encountered\n");
 		return;
 	}
-	printk("curr_entry %px, child_entry %px, syscall : %d, argv 0 : %lu, eot : %d\n",curr_entry,curr_entry->children_list,curr_entry->syscallNumber,curr_entry->argv[0],curr_entry->end_of_template);
+	printk("curr_entry %px, child_entry %px, syscall : %d, argv 0 : %lu, eot : %d, delta : %ld\n",curr_entry,curr_entry->children_list,curr_entry->syscallNumber,curr_entry->argv[0],curr_entry->end_of_template, curr_entry->delta);
 	
 	
 	struct audit_template_entry *child = curr_entry->children_list;
@@ -1544,10 +1534,23 @@ unlock_and_return:
 	return ret;
 }
 
+u64 get_audit_time_nanos(struct timespec64 ctime){
+	u64 nanos =  (unsigned long long)ctime.tv_sec * 1000000000 + ctime.tv_nsec;
+	return nanos;
+}
+
+bool check_interarrival_time(u64 max_delta, u64 prev_syscall_time, u64 curr_syscall_time){
+	//max_delta == -1 means there is no need to check for the interarrival time
+	//printk("Checking timing deltas %lld, %llu, %llu",max_delta,prev_syscall_time,curr_syscall_time);
+	return max_delta == 0 || ((curr_syscall_time - prev_syscall_time) <= max_delta);
+}
+
+//Checks if current syscall matches expected template entry.
+//Updates the latest matched syscall time in context
 bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
-	bool match = false;
+	bool match = false, match_time = false;
 	//printk("checking for match %d, %d, %d\n",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
 
 	if(curr_event->syscallNumber == ctx->major){
@@ -1557,10 +1560,28 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 				match = (curr_event->argv[0] == ctx->argv[0]);
 				break;
 		}
+		u64 ctime = get_audit_time_nanos(ctx->ctime);
+		/*match = match && 
+			check_interarrival_time(
+				curr_event->delta, 
+				ctx->prev_syscall_time, 
+				ctime);
+		*/
+		match_time = check_interarrival_time(
+				curr_event->delta, 
+				ctx->prev_syscall_time, 
+				ctime);
+		if(match && !match_time){
+			printk("timing match failed : %d %lu %llu %lu \n", ctx->major,ctx->argv[0],ctime-ctx->prev_syscall_time,curr_event->delta);
+		}
+
+		if(match && match_time){
+			//printk("timing match passed : %d %lu %llu %lu \n", ctx->major,ctx->argv[0],ctime-ctx->prev_syscall_time,curr_event->delta);
+			ctx->prev_syscall_time = ctime;
+		}
 	}
 
-	//printk("match %d\n",match);
-	return match;
+	return match && match_time;
 }
 
 void log_template_end(struct audit_context *ctx)
@@ -1599,6 +1620,7 @@ void free_buffered_logs(struct audit_context *ctx){
 
 static void inline reset_curr_template_pos(struct audit_context *ctx){
 	ctx->current_template_pos = &audit_template_start;
+	ctx->prev_syscall_time = 0;
 }
 
 static inline bool has_template_ended(struct audit_template_entry *event){
@@ -1632,7 +1654,7 @@ bool audit_filter_template(struct audit_context *ctx)
 	exp_curr_event = ctx->current_template_pos;
 	//if we match the syscall directly, then we are good,
 	//we remain at the same position, to account for repetitions
-	//if we match the current template, then we are good to continue
+	//TODO: We need to ensure that we move ahead even if we do match.
 	if (match_audit_template_event(exp_curr_event, ctx)) {
 		return true;
 	} //otherwise, we want to go check the next options

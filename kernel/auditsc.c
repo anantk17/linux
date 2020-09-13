@@ -923,6 +923,7 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 	context->prio = state == AUDIT_RECORD_CONTEXT ? ~0ULL : 0;
 	
 	context->current_template_pos = &audit_template_start;
+	context->prev_syscall_time = 0;
 	INIT_LIST_HEAD(&context->curr_buff_list_head);
 	
 	INIT_LIST_HEAD(&context->killed_trees);

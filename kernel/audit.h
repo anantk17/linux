@@ -116,6 +116,7 @@ struct audit_buffer_list_entry{
 };
 
 //we try to represent the templates for the given application to be in the form of a prefix tree
+//TODO: add new fields for command name, delta and total time for template
 struct audit_template_entry{
 	int syscallNumber;
 	//need to add syscall related context here, probably syscall arguments
@@ -169,6 +170,9 @@ struct audit_context {
 	
 	struct audit_template_entry *current_template_pos;
 	struct list_head curr_buff_list_head;
+	/* tpl_start_time allows us to check for total template duration 
+	   prev_syscall_time allows us to check for delta */
+	u64 tpl_start_time, prev_syscall_time;	
 	
 	/*
 	 * The names_list is the list of all audit_names collected during this
