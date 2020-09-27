@@ -61,6 +61,7 @@ struct list_head audit_filter_list[AUDIT_NR_FILTERS] = {
 #error Fix audit_filter_list initialiser
 #endif
 };
+
 static struct list_head audit_rules_list[AUDIT_NR_FILTERS] = {
 	LIST_HEAD_INIT(audit_rules_list[0]),
 	LIST_HEAD_INIT(audit_rules_list[1]),
@@ -113,7 +114,8 @@ void audit_free_rule_rcu(struct rcu_head *head)
 	audit_free_rule(e);
 }
 
-struct audit_template_entry audit_template_start = {-1, {-1,-1,-1,-1},0,0,NULL,0,NULL,NULL};
+//struct audit_template_entry audit_template_start = {-1, {-1,-1,-1,-1},0,0,NULL,0,NULL,NULL};
+struct audit_template_entry *audit_template_starts[NUM_AUDIT_TEMPLATE_MAX];
 int audit_templates_loaded = 0;
 
 /* Initialize an audit filterlist entry. */
@@ -829,8 +831,7 @@ struct audit_entry *audit_dupe_rule(struct audit_krule *old)
 	 * never dereferences tree and we can't get false positives there
 	 * since we'd have to have rule gone from the list *and* removed
 	 * before the chunks found by lookup had been allocated, i.e. before
-	 * the beginning of list scan.
-	 */
+	 * the beginning of list scan.*/
 	new->tree = old->tree;
 	memcpy(new->fields, old->fields, sizeof(struct audit_field) * fcount);
 
@@ -926,7 +927,7 @@ static bool template_entry_equal(struct audit_template_entry *entry1, struct aud
 		return false;
 	}
 	//TODO: Add logic to check for command name here
-	printk("checking template entries for match\n");
+	//printk("checking template entries for match\n");
 	return entry1->syscallNumber == entry2->syscallNumber &&
 	       entry1->argv[0] == entry2->argv[0] &&
 	       entry1->argv[1] == entry2->argv[1] &&
@@ -944,8 +945,6 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 	new_entry->argv[3] = data.argv[3];
 	new_entry->delta = data.delta;
 
-	new_entry->children_list = NULL;
-	new_entry->num_children = 0;
 	new_entry->end_of_template = false;
 	new_entry->next = NULL;
 	
@@ -956,47 +955,61 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 
 }
 
+static void traverse_template_automaton(struct audit_template_entry **templates){
+	struct audit_template_entry *curr_entry;
+	int i;
+	printk("Total templates : %d\n", audit_templates_loaded);
+	for(i=0;i < audit_templates_loaded; i++){
+		printk("Template %d started\n",i);
+		curr_entry = templates[i];
+		while(curr_entry!=NULL){
+			printk("curr_entry %px, next %px, syscall : %d, argv 0 : %lu, eot : %d, delta : %ld\n",
+				curr_entry,
+				curr_entry->next,
+				curr_entry->syscallNumber,
+				curr_entry->argv[0],
+				curr_entry->end_of_template, 
+				curr_entry->delta);
+			curr_entry = curr_entry->next;
+		}
+	}
+}
+
+
 static void add_audit_template(struct audit_template *template)
 {
 	int i = 0,j = 0;
-	struct audit_template_entry *next_entry ,*parent_entry = &audit_template_start;
+	struct audit_template_entry *next_entry ,*parent_entry = NULL;
 	//We have abandonded the prefix tree approach and now add all nodes directly at the head
 	printk("Trying to add template to kernel prefix tree %s %d %d %px \n",template->templateName,template->seq_len,template->template_len,template->seq_array);
-	printk("template start %px, %d, %px \n",parent_entry,parent_entry->num_children,parent_entry->children_list);
+	printk("template start %px \n",parent_entry);
 	for(; i < template->seq_len; i++){
-		printk("Trying to create a new node, we know there is no repetition %s\n",template->templateName);
-		//this means we need to add a new child node here
-		next_entry = create_audit_template_entry(template->seq_array[i]);
-		next_entry->next = parent_entry->children_list;
-		parent_entry->children_list = next_entry;
-		parent_entry->num_children++;
-		parent_entry = next_entry;
-		printk("new node added %px, %d %ld\n",parent_entry,parent_entry->syscallNumber, parent_entry->delta);
+		if(parent_entry == NULL){
+			printk("Creating new template sequence %s\n", template->templateName);
+			audit_template_starts[audit_templates_loaded] = create_audit_template_entry(template->seq_array[i]);
+			parent_entry = audit_template_starts[audit_templates_loaded];
+		}
+		else{
+			printk("Trying to create a new node, we know there is no repetition %s\n",template->templateName);
+			//this means we need to add a new child node here
+			next_entry = create_audit_template_entry(template->seq_array[i]);
+			parent_entry->next = next_entry;
+			parent_entry = next_entry;
+			printk("new node added %px, %d %ld\n",parent_entry,parent_entry->syscallNumber, parent_entry->delta);
+		}
 	}
 
 	parent_entry->end_of_template = 1;
-	parent_entry->template_name = kmalloc(sizeof(template->template_len + 1),GFP_KERNEL);
-	strncpy(parent_entry->template_name, template->templateName, template->template_len + 1);
+	
+	audit_template_starts[audit_templates_loaded]->template_name = kmalloc(sizeof(template->template_len + 1),GFP_KERNEL);
+	strncpy(audit_template_starts[audit_templates_loaded]->template_name, template->templateName, template->template_len + 1);
 
 	printk("audit template added \n");
+	audit_templates_loaded++;
+	traverse_template_automaton(audit_template_starts);
 	return;
 }
 
-static void traverse_template_automaton(struct audit_template_entry *entry){
-	struct audit_template_entry *curr_entry = entry;
-	if(curr_entry == NULL){
-		printk("NULL entry encountered\n");
-		return;
-	}
-	printk("curr_entry %px, child_entry %px, syscall : %d, argv 0 : %lu, eot : %d, delta : %ld\n",curr_entry,curr_entry->children_list,curr_entry->syscallNumber,curr_entry->argv[0],curr_entry->end_of_template, curr_entry->delta);
-	
-	
-	struct audit_template_entry *child = curr_entry->children_list;
-	while(child!=NULL){
-		traverse_template_automaton(child);
-		child = child->next;
-	}
-}
 
 static void setup_audit_template(void)
 {
@@ -1007,11 +1020,11 @@ static void setup_audit_template(void)
 
 	add_audit_template(); */
 
-	audit_templates_loaded = 1;
+	//audit_templates_loaded = 1;
 
-	printk("Audit template start node %px",&audit_template_start);
+	//printk("Audit template start node %px",&audit_template_start);
 
-	traverse_template_automaton(&audit_template_start);
+	traverse_template_automaton(audit_template_starts);
 
 }
 
@@ -1572,7 +1585,11 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 				ctx->prev_syscall_time, 
 				ctime);
 		if(match && !match_time){
-			printk("timing match failed : %d %lu %llu %lu \n", ctx->major,ctx->argv[0],ctime-ctx->prev_syscall_time,curr_event->delta);
+			/*printk("timing match failed! : %d %lu %llu %lu \n", 
+				ctx->major,
+				ctx->argv[0],
+				ctime-ctx->prev_syscall_time,
+				curr_event->delta);*/
 		}
 
 		if(match && match_time){
@@ -1584,10 +1601,32 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 	return match && match_time;
 }
 
-void log_template_end(struct audit_context *ctx)
-{	
+void continue_template_match(struct audit_context *ctx, int template_idx)
+{
+	//We want to free logs that were buffered till now
 	free_buffered_logs(ctx);
-	audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,"finished processing template : %s", ctx->current_template_pos->template_name);
+	//get status handle
+	struct audit_template_match_status* tpl_status;
+	tpl_status = &ctx->current_template_pos[template_idx];
+	//update status
+	//tpl_status->firstTplStartTime = tpl_status->firstTplStartTime > 0 ? tpl_status->firstTplStartTime : get_audit_time_nanos(ctx->ctime);
+	tpl_status->lastTplEndTime = get_audit_time_nanos(ctx->ctime);
+	tpl_status->observedCount++;
+	//printk("tpl repetition detected : %d %d\n", tpl_status->observedCount,ctx->current_template_pos[template_idx].observedCount);
+
+}
+
+void log_template_end(struct audit_context *ctx, int template_idx)
+{	
+	//free_buffered_logs(ctx);
+	audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,"template=%s rep=%d stime=%llu etime=%llu pid=%d ppid=%scomm=%s", 
+		audit_template_starts[template_idx]->template_name,
+		ctx->current_template_pos[template_idx].observedCount,
+		ctx->current_template_pos[template_idx].firstTplStartTime,
+		ctx->current_template_pos[template_idx].lastTplEndTime,
+		ctx->pid,
+		ctx->ppid,
+		ctx->target_comm);
 }
 
 void flush_buffered_logs(struct audit_context *ctx)
@@ -1618,16 +1657,37 @@ void free_buffered_logs(struct audit_context *ctx){
 	list_del_init(&ctx->curr_buff_list_head); //reset and initialize buffer list head
 }
 
-static void inline reset_curr_template_pos(struct audit_context *ctx){
-	ctx->current_template_pos = &audit_template_start;
+static void reset_template_match_status(struct audit_context *ctx){
+	int i;
+	for(i = 0;i < audit_templates_loaded;i++){
+		ctx->current_template_pos[i].current_tpl_entry = audit_template_starts[i];
+		ctx->current_template_pos[i].firstTplStartTime = 0;
+		ctx->current_template_pos[i].lastTplEndTime = 0;
+		ctx->current_template_pos[i].observedCount = 0;
+	}
 	ctx->prev_syscall_time = 0;
 }
 
-static inline bool has_template_ended(struct audit_template_entry *event){
-	return event->end_of_template;
+static void inline reset_curr_template_pos(struct audit_context *ctx){
+	int i;
+	for(i = 0;i < audit_templates_loaded;i++){
+		ctx->current_template_pos[i].current_tpl_entry = audit_template_starts[i];
+	}
+	ctx->prev_syscall_time = 0;
 }
 
-static bool check_next_entries(struct audit_context *ctx){
+static inline bool has_template_ended(struct audit_template_entry *template_pos){
+	return template_pos->end_of_template;
+}
+
+static inline void update_match_start_time(struct audit_context *ctx, int template_idx){
+	struct audit_template_match_status* tpl_status;
+	tpl_status = &ctx->current_template_pos[template_idx];
+
+	tpl_status->firstTplStartTime = tpl_status->firstTplStartTime > 0 ? tpl_status->firstTplStartTime : get_audit_time_nanos(ctx->ctime);
+}
+
+/* static bool check_expected_entries(struct audit_context *ctx){
 	bool match_found = false;
 	struct audit_template_entry *next_event = ctx->current_template_pos->children_list;
 	int num_children = ctx->current_template_pos->num_children;
@@ -1641,24 +1701,91 @@ static bool check_next_entries(struct audit_context *ctx){
 		next_event = next_event->next;
 	}
 	return match_found;
-}
+} */
 
 bool audit_filter_template(struct audit_context *ctx)
 {
-	struct audit_template_entry *exp_curr_event;
+	//We should start off with a list of possible starting positions
+	//Each round we iterate through those and update the pointers
+	//according to the current syscall that we see
+	// *templates[MAX_TPL]
+	//pointers correspond to the next allowed syscalls
+
+
+	struct audit_template_match_status *exp_curr_events;
 
 	if (!(ctx->in_syscall) || ctx == NULL || ctx->current_template_pos == NULL) {
 		return false;
 	}
 
-	exp_curr_event = ctx->current_template_pos;
+	exp_curr_events = ctx->current_template_pos;
+	//printk("Traversing template automaton at runtime %px\n",ctx->current_template_pos);
+	
+	//traverse_template_automaton(ctx->current_template_pos);
 	//if we match the syscall directly, then we are good,
 	//we remain at the same position, to account for repetitions
 	//TODO: We need to ensure that we move ahead even if we do match.
-	if (match_audit_template_event(exp_curr_event, ctx)) {
+	int template_idx = 0;
+	bool matched = false;
+	for(;template_idx < audit_templates_loaded;template_idx++){
+		if (exp_curr_events[template_idx].current_tpl_entry != NULL && 
+			match_audit_template_event(exp_curr_events[template_idx].current_tpl_entry, ctx)){ 
+			matched = true;
+			update_match_start_time(ctx, template_idx);
+			//printk("Template entry matched\n");
+			//if we see a match at the end of the template, 
+			//we want to finish things right there
+			if(has_template_ended(exp_curr_events[template_idx].current_tpl_entry)){
+				//printk("template ended : %d %lu %d \n", 
+				//	ctx->major,ctx->argv[0],
+				//	exp_curr_events[template_idx].current_tpl_entry->end_of_template);
+				//
+				//If macro templates are enabled, we want to wait to match more reps before writing logs
+				continue_template_match(ctx, template_idx);
+				reset_curr_template_pos(ctx);
+				
+				if(!audit_macro_template_enabled){
+					log_template_end(ctx, template_idx);
+					reset_template_match_status(ctx);
+				}
+				
+				return true;
+			}else{
+				exp_curr_events[template_idx].current_tpl_entry = exp_curr_events[template_idx].current_tpl_entry->next;
+			}
+		} else{
+			//No template match
+			//Need to check if current template was matched earlier
+			if(audit_macro_template_enabled && 
+				exp_curr_events[template_idx].observedCount > 0){
+				log_template_end(ctx, template_idx);
+			}
+			exp_curr_events[template_idx].current_tpl_entry = NULL;
+		}
+	}
+
+	if(matched)
 		return true;
-	} //otherwise, we want to go check the next options
-	else {
+
+	//If we are here, that means that none of the templates have matched
+	flush_buffered_logs(ctx);
+	reset_template_match_status(ctx);
+	//reset_curr_template_pos(ctx);
+
+	return false;
+}
+
+
+	/* if (match_audit_template_event(exp_curr_event, ctx)) {
+		//if we see a match at the end of the template, we want to finish things right there
+		if(has_template_ended(exp_curr_event)){
+			printk("template ended : %d %lu %d \n", ctx->major,ctx->argv[0],exp_curr_event->end_of_template);
+			log_template_end(ctx);
+			reset_curr_template_pos(ctx);
+		}
+		return true;
+	} */ //otherwise, we want to go check the next options
+	/* else {
 		struct audit_template_entry *next_event;
 		bool match_found = false;
 
@@ -1692,7 +1819,7 @@ bool audit_filter_template(struct audit_context *ctx)
 
 	}
 	return false;	//default action should always be to say we couldn't find match in template -> lets things take the normal course.
-}
+} */
 
 static int update_lsm_rule(struct audit_krule *r)
 {

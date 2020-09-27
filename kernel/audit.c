@@ -96,6 +96,8 @@ static u32	audit_failure = AUDIT_FAIL_PRINTK;
 
 u32	audit_template_enabled = AUDIT_OFF;
 
+u32	audit_macro_template_enabled = AUDIT_OFF;
+
 /* private audit network namespace index */
 static unsigned int audit_net_id;
 
@@ -464,6 +466,15 @@ static int audit_set_template_enabled(u32 state)
 
 	return audit_do_config_change("audit_template_enabled",
 				      &audit_template_enabled, state);
+}
+
+static int audit_set_macro_template_enabled(u32 state)
+{
+	if(!audit_enabled || !audit_template_enabled)
+		return -EPERM;
+	
+	return audit_do_config_change("audit_macro_template_enabled",
+					&audit_macro_template_enabled, state);
 }
 
 static int audit_set_enabled(u32 state)
@@ -1225,6 +1236,7 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		s.feature_bitmap	= AUDIT_FEATURE_BITMAP_ALL;
 		s.backlog_wait_time	= audit_backlog_wait_time;
 		s.template_enabled 	= audit_template_enabled;
+		s.macro_template_enabled = audit_macro_template_enabled;
 		audit_send_reply(skb, seq, AUDIT_GET, 0, 0, &s, sizeof(s));
 		break;
 	}
@@ -1331,6 +1343,11 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		}
 		if (s.mask & AUDIT_TEMPLATE_ENABLED) {
 			err = audit_set_template_enabled(s.template_enabled);
+			if (err < 0)
+				return err;
+		}
+		if (s.mask & AUDIT_MACRO_TPL_ENABLED){
+			err = audit_set_macro_template_enabled(s.macro_template_enabled);
 			if (err < 0)
 				return err;
 		}

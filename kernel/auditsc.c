@@ -922,7 +922,15 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 	context->state = state;
 	context->prio = state == AUDIT_RECORD_CONTEXT ? ~0ULL : 0;
 	
-	context->current_template_pos = &audit_template_start;
+	int i;
+	for(i=0;i < audit_templates_loaded; i++){
+		//context->current_template_pos[i] = kzalloc(sizeof(struct audit_template_match_status), GFP_KERNEL);
+		context->current_template_pos[i].current_tpl_entry = audit_template_starts[i];
+		context->current_template_pos[i].firstTplStartTime = 0;
+		context->current_template_pos[i].lastTplEndTime = 0;
+		context->current_template_pos[i].observedCount = 0;
+	}
+	
 	context->prev_syscall_time = 0;
 	INIT_LIST_HEAD(&context->curr_buff_list_head);
 	

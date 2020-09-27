@@ -126,14 +126,16 @@ struct audit_template_entry{
 	bool end_of_template;
 	char* template_name;
 
-	int num_children;
-	struct audit_template_entry *children_list;
-	//the way to identify potential end of templates is to check end_of_template, and then wait for next syscall
-	//leaf nodes can be checked by num_children == 0
-
 	//if end_of_template and num_children == 0, we definitely know that we are out of the woods.
 	//the requirement that templates not be substrings of one another simplifies initial impl and enables the above condition
 	struct audit_template_entry *next; //used for traversing children / sibling relations
+};
+
+struct audit_template_match_status{
+	int observedCount;
+	u64 firstTplStartTime;
+	u64 lastTplEndTime;
+	struct audit_template_entry *current_tpl_entry;
 };
 
 struct audit_template{
@@ -152,7 +154,7 @@ struct audit_template_data{
 	unsigned long delta;
 };
 
-extern struct audit_template_entry audit_template_start;
+extern struct audit_template_entry *audit_template_starts[NUM_AUDIT_TEMPLATE_MAX];
 extern int audit_templates_loaded;
 
 /* The per-task audit context. */
@@ -168,7 +170,7 @@ struct audit_context {
 	u64		    prio;
 	int		    return_valid; /* return code is valid */
 	
-	struct audit_template_entry *current_template_pos;
+	struct audit_template_match_status current_template_pos[NUM_AUDIT_TEMPLATE_MAX];
 	struct list_head curr_buff_list_head;
 	/* tpl_start_time allows us to check for total template duration 
 	   prev_syscall_time allows us to check for delta */
@@ -267,6 +269,8 @@ struct audit_context {
 extern bool audit_ever_enabled;
 
 extern u32 audit_template_enabled;
+
+extern u32 audit_macro_template_enabled;
 
 
 extern void audit_copy_inode(struct audit_names *name,
