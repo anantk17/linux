@@ -1196,7 +1196,18 @@ out:
 	kfree(buf_head);
 }
 
-static void show_special(struct audit_context *context, int *call_panic, bool toBuffer)
+static inline void process_audit_log(int matched, struct audit_context *context, struct audit_buffer* ab){
+	switch(matched){
+		case ELLIPSIS_MATCH:
+			add_log_to_template(context, ab);
+			break;
+		case VANILLA_AUDIT:
+			audit_log_end(ab);
+			break;
+	}
+}
+
+static void show_special(struct audit_context *context, int *call_panic, int toBuffer)
 {
 	struct audit_buffer *ab;
 	int i;
@@ -1303,7 +1314,7 @@ static void show_special(struct audit_context *context, int *call_panic, bool to
 
 		break;
 	}
-	toBuffer ? add_log_to_template(context,ab) : audit_log_end(ab);
+	process_audit_log(toBuffer,context,ab);
 }
 
 static inline int audit_proctitle_rtrim(char *proctitle, int len)
@@ -1319,7 +1330,7 @@ static inline int audit_proctitle_rtrim(char *proctitle, int len)
 }
 
 static void audit_log_proctitle(struct task_struct *tsk,
-			 struct audit_context *context, bool toBuffer)
+			 struct audit_context *context, int toBuffer)
 {
 	int res;
 	char *buf;
@@ -1356,7 +1367,7 @@ static void audit_log_proctitle(struct task_struct *tsk,
 	len = context->proctitle.len;
 out:
 	audit_log_n_untrustedstring(ab, msg, len);
-	toBuffer ? add_log_to_template(context,ab) : audit_log_end(ab);
+	process_audit_log(toBuffer, context, ab);
 }
 
 static inline int get_relative_thread_id(pid_t thread_id, pid_t thread_group_id){
@@ -1369,7 +1380,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	struct audit_buffer *ab;
 	struct audit_aux_data *aux;
 	struct audit_names *n;
-	bool matched;
+	int matched;
 
 	/* tsk == current */
 	context->personality = tsk->personality;
@@ -1385,7 +1396,11 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	//and reset the 
 	
 	//we should check if we care about the executable before we do any heavylifting
-	matched = audit_template_enabled ? audit_filter_template(context) : false;
+	matched = audit_template_enabled ? audit_filter_template(context) : 0;
+
+	if (matched == ELLIPSIS_TPL_FINISH){ //If the tpl ended, log can be skipped
+		return;
+	}
 
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
 	//we can allocate the memory without issues as we believe the slowdown is 
@@ -1413,7 +1428,9 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 
 	audit_log_task_info(ab, tsk);
 	audit_log_key(ab, context->filterkey);
-	matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+	
+	//matched =? add_log_to_template(context,ab) : audit_log_end(ab);
+	process_audit_log(matched, context, ab);
 
 	for (aux = context->aux; aux; aux = aux->next) {
 
@@ -1440,7 +1457,8 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			break; }
 
 		}
-		matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+		//matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+		process_audit_log(matched, context,ab);
 	}
 
 	if (context->type)
@@ -1451,7 +1469,8 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 		if (ab) {
 			audit_log_format(ab, "fd0=%d fd1=%d",
 					context->fds[0], context->fds[1]);
-			matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+			//matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+			process_audit_log(matched, context, ab);
 		}
 	}
 
@@ -1461,7 +1480,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			audit_log_format(ab, "saddr=");
 			audit_log_n_hex(ab, (void *)context->sockaddr,
 					context->sockaddr_len);
-			matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+			process_audit_log(matched, context, ab);
 		}
 	}
 
@@ -1489,7 +1508,8 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 		ab = audit_log_start(context, GFP_KERNEL, AUDIT_CWD);
 		if (ab) {
 			audit_log_d_path(ab, "cwd=", &context->pwd);
-			matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+			//matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+			process_audit_log(matched, context, ab);
 		}
 	}
 
@@ -1504,8 +1524,10 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 
 	/* Send end of event record to help user space know we are finished */
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_EOE);
-	if (ab)
-		matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+	if (ab){
+		//matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+		process_audit_log(matched, context, ab);
+	}
 	if (call_panic)
 		audit_panic("error converting sid to string");
 }

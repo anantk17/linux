@@ -30,6 +30,10 @@
  * a name dynamically and also add those to the list anchored by names_list. */
 #define AUDIT_NAMES	5
 
+#define VANILLA_AUDIT		0
+#define ELLIPSIS_MATCH		1
+#define ELLIPSIS_TPL_FINISH	2
+
 //This is the hard limit on the number of templates we want to hold in memory
 #define NUM_AUDIT_TEMPLATE_MAX 5
 
@@ -395,7 +399,7 @@ extern u32 audit_sig_sid;
 
 extern int audit_filter(int msgtype, unsigned int listtype);
 
-extern bool audit_filter_template(struct audit_context *ctx);
+extern int audit_filter_template(struct audit_context *ctx);
 extern void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab);
 extern void free_buffered_logs(struct audit_context *ctx);
 

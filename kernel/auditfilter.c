@@ -1703,7 +1703,7 @@ static inline void update_match_start_time(struct audit_context *ctx, int templa
 	return match_found;
 } */
 
-bool audit_filter_template(struct audit_context *ctx)
+int audit_filter_template(struct audit_context *ctx)
 {
 	//We should start off with a list of possible starting positions
 	//Each round we iterate through those and update the pointers
@@ -1715,7 +1715,7 @@ bool audit_filter_template(struct audit_context *ctx)
 	struct audit_template_match_status *exp_curr_events;
 
 	if (!(ctx->in_syscall) || ctx == NULL || ctx->current_template_pos == NULL) {
-		return false;
+		return VANILLA_AUDIT;
 	}
 
 	exp_curr_events = ctx->current_template_pos;
@@ -1726,11 +1726,11 @@ bool audit_filter_template(struct audit_context *ctx)
 	//we remain at the same position, to account for repetitions
 	//TODO: We need to ensure that we move ahead even if we do match.
 	int template_idx = 0;
-	bool matched = false;
+	int matched = VANILLA_AUDIT;
 	for(;template_idx < audit_templates_loaded;template_idx++){
 		if (exp_curr_events[template_idx].current_tpl_entry != NULL && 
 			match_audit_template_event(exp_curr_events[template_idx].current_tpl_entry, ctx)){ 
-			matched = true;
+			matched = ELLIPSIS_MATCH;
 			update_match_start_time(ctx, template_idx);
 			//printk("Template entry matched\n");
 			//if we see a match at the end of the template, 
@@ -1743,13 +1743,13 @@ bool audit_filter_template(struct audit_context *ctx)
 				//If macro templates are enabled, we want to wait to match more reps before writing logs
 				continue_template_match(ctx, template_idx);
 				reset_curr_template_pos(ctx);
-				
+
 				if(!audit_macro_template_enabled){
 					log_template_end(ctx, template_idx);
 					reset_template_match_status(ctx);
 				}
 				
-				return true;
+				return ELLIPSIS_TPL_FINISH;
 			}else{
 				exp_curr_events[template_idx].current_tpl_entry = exp_curr_events[template_idx].current_tpl_entry->next;
 			}
@@ -1765,14 +1765,14 @@ bool audit_filter_template(struct audit_context *ctx)
 	}
 
 	if(matched)
-		return true;
+		return ELLIPSIS_MATCH;
 
 	//If we are here, that means that none of the templates have matched
 	flush_buffered_logs(ctx);
 	reset_template_match_status(ctx);
 	//reset_curr_template_pos(ctx);
 
-	return false;
+	return VANILLA_AUDIT;
 }
 
 
