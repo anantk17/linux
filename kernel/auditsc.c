@@ -927,6 +927,8 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 		//context->current_template_pos[i] = kzalloc(sizeof(struct audit_template_match_status), GFP_KERNEL);
 		context->current_template_pos[i].current_tpl_entry = audit_template_starts[i];
 		context->current_template_pos[i].firstTplStartTime = 0;
+		context->current_template_pos[i].previousTplStartTime = 0;
+		context->current_template_pos[i].currentTplStartTime = 0;
 		context->current_template_pos[i].lastTplEndTime = 0;
 		context->current_template_pos[i].observedCount = 0;
 	}

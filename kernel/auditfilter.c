@@ -1003,7 +1003,7 @@ static void add_audit_template(struct audit_template *template)
 	
 	audit_template_starts[audit_templates_loaded]->template_name = kmalloc(sizeof(template->template_len + 1),GFP_KERNEL);
 	strncpy(audit_template_starts[audit_templates_loaded]->template_name, template->templateName, template->template_len + 1);
-
+	audit_template_starts[audit_templates_loaded]->tpl_macro_delta = template->tpl_macro_delta;
 	printk("audit template added \n");
 	audit_templates_loaded++;
 	traverse_template_automaton(audit_template_starts);
@@ -1262,6 +1262,7 @@ struct audit_template* audit_template_udata_to_template(struct audit_template_ud
 	template->template_len = utemplate->namelen;
 	template->seq_len = utemplate->seqlen;
 	template->tpl_time = utemplate->tpl_time;
+	template->tpl_macro_delta = utemplate->tpl_macro_delta;
 
 	template->exeName = kzalloc(sizeof(char) * template->exec_len + 1,GFP_KERNEL);
 	memcpy(template->exeName,utemplate->buf,template->exec_len);
@@ -1609,7 +1610,8 @@ void continue_template_match(struct audit_context *ctx, int template_idx)
 	struct audit_template_match_status* tpl_status;
 	tpl_status = &ctx->current_template_pos[template_idx];
 	//update status
-	//tpl_status->firstTplStartTime = tpl_status->firstTplStartTime > 0 ? tpl_status->firstTplStartTime : get_audit_time_nanos(ctx->ctime);
+	tpl_status->previousTplStartTime = tpl_status->currentTplStartTime;
+	tpl_status->currentTplStartTime = 0;
 	tpl_status->lastTplEndTime = get_audit_time_nanos(ctx->ctime);
 	tpl_status->observedCount++;
 	//printk("tpl repetition detected : %d %d\n", tpl_status->observedCount,ctx->current_template_pos[template_idx].observedCount);
@@ -1662,6 +1664,8 @@ static void reset_template_match_status(struct audit_context *ctx){
 	for(i = 0;i < audit_templates_loaded;i++){
 		ctx->current_template_pos[i].current_tpl_entry = audit_template_starts[i];
 		ctx->current_template_pos[i].firstTplStartTime = 0;
+		ctx->current_template_pos[i].previousTplStartTime = 0;
+		ctx->current_template_pos[i].currentTplStartTime = 0;
 		ctx->current_template_pos[i].lastTplEndTime = 0;
 		ctx->current_template_pos[i].observedCount = 0;
 	}
@@ -1680,12 +1684,12 @@ static inline bool has_template_ended(struct audit_template_entry *template_pos)
 	return template_pos->end_of_template;
 }
 
-static inline void update_match_start_time(struct audit_context *ctx, int template_idx){
+/* static inline void update_match_start_time(struct audit_context *ctx, int template_idx){
 	struct audit_template_match_status* tpl_status;
 	tpl_status = &ctx->current_template_pos[template_idx];
 
 	tpl_status->firstTplStartTime = tpl_status->firstTplStartTime > 0 ? tpl_status->firstTplStartTime : get_audit_time_nanos(ctx->ctime);
-}
+} */
 
 /* static bool check_expected_entries(struct audit_context *ctx){
 	bool match_found = false;
@@ -1702,6 +1706,29 @@ static inline void update_match_start_time(struct audit_context *ctx, int templa
 	}
 	return match_found;
 } */
+
+static inline bool update_and_check_template_arrival_time(struct audit_context *ctx, int template_idx)
+{
+	struct audit_template_match_status* tpl_status;
+	bool first_syscall_in_tpl;
+	tpl_status = &ctx->current_template_pos[template_idx];
+	first_syscall_in_tpl = (tpl_status->currentTplStartTime == 0);
+	tpl_status->currentTplStartTime = first_syscall_in_tpl ? get_audit_time_nanos(ctx->ctime) : tpl_status->currentTplStartTime;
+	tpl_status->firstTplStartTime = tpl_status->firstTplStartTime > 0 ? tpl_status->firstTplStartTime : tpl_status->currentTplStartTime;
+	//Allow for early exit in case macro templates are not enabled, or template arrival times are not considered or if the system call is not the first entry in the template
+	if(!audit_macro_template_enabled || !audit_template_starts[template_idx]->tpl_macro_delta || !tpl_status->previousTplStartTime || !first_syscall_in_tpl)
+		return true;
+
+	//return((tpl_status->currentTplStartTime - tpl_status->previousTplStartTime) <= audit_template_starts[template_idx]->tpl_macro_delta);
+	bool match = (tpl_status->currentTplStartTime - tpl_status->previousTplStartTime) <= audit_template_starts[template_idx]->tpl_macro_delta;
+	if(!match)
+		printk("Macro template arrival times not in range %s %llu %llu %llu\n", 
+			audit_template_starts[template_idx]->template_name,
+			tpl_status->previousTplStartTime,
+			tpl_status->currentTplStartTime,
+			audit_template_starts[template_idx]->tpl_macro_delta);
+	return match;
+}
 
 int audit_filter_template(struct audit_context *ctx)
 {
@@ -1729,9 +1756,10 @@ int audit_filter_template(struct audit_context *ctx)
 	int matched = VANILLA_AUDIT;
 	for(;template_idx < audit_templates_loaded;template_idx++){
 		if (exp_curr_events[template_idx].current_tpl_entry != NULL && 
-			match_audit_template_event(exp_curr_events[template_idx].current_tpl_entry, ctx)){ 
+			match_audit_template_event(exp_curr_events[template_idx].current_tpl_entry, ctx) &&
+			update_and_check_template_arrival_time(ctx, template_idx)){ 
 			matched = ELLIPSIS_MATCH;
-			update_match_start_time(ctx, template_idx);
+			//update_match_start_time(ctx, template_idx);
 			//printk("Template entry matched\n");
 			//if we see a match at the end of the template, 
 			//we want to finish things right there

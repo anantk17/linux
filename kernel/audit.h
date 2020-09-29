@@ -129,6 +129,7 @@ struct audit_template_entry{
 	
 	bool end_of_template;
 	char* template_name;
+	u64   tpl_macro_delta;
 
 	//if end_of_template and num_children == 0, we definitely know that we are out of the woods.
 	//the requirement that templates not be substrings of one another simplifies initial impl and enables the above condition
@@ -139,6 +140,8 @@ struct audit_template_match_status{
 	int observedCount;
 	u64 firstTplStartTime;
 	u64 lastTplEndTime;
+	u64 currentTplStartTime;
+	u64 previousTplStartTime;
 	struct audit_template_entry *current_tpl_entry;
 };
 
@@ -149,6 +152,7 @@ struct audit_template{
 	u64 tpl_time;
 	char* exeName;
 	char* templateName;
+	u64 tpl_macro_delta;
 	struct audit_template_data* seq_array;
 };
 
