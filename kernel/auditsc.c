@@ -1398,7 +1398,7 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	//and reset the 
 	
 	//we should check if we care about the executable before we do any heavylifting
-	matched = audit_template_enabled ? audit_filter_template(context) : 0;
+	matched = audit_template_enabled ? audit_filter_template(context, tsk) : 0;
 
 	if (matched == ELLIPSIS_TPL_FINISH){ //If the tpl ended, log can be skipped
 		return;

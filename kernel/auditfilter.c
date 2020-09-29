@@ -32,6 +32,7 @@
 #include <linux/slab.h>
 #include <linux/security.h>
 #include <net/net_namespace.h>
+#include <linux/personality.h>
 #include <net/sock.h>
 #include "audit.h"
 
@@ -1571,7 +1572,7 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 		switch(ctx->major){
 			case __NR_read: case __NR_write: case __NR_pread64:
 				//printk("checking syscall args: %lu %lu\n", curr_event->argv[0],ctx->argv[0]);
-				match = (curr_event->argv[0] == ctx->argv[0]);
+				match = (curr_event->argv[0] == ctx->argv[0] && curr_event->argv[2] == ctx->argv[2]);
 				break;
 		}
 		u64 ctime = get_audit_time_nanos(ctx->ctime);
@@ -1618,17 +1619,24 @@ void continue_template_match(struct audit_context *ctx, int template_idx)
 
 }
 
-void log_template_end(struct audit_context *ctx, int template_idx)
+void log_template_end(struct audit_context *context, struct task_struct *tsk, int template_idx)
 {	
-	//free_buffered_logs(ctx);
-	audit_log(NULL, GFP_KERNEL, AUDIT_SYSCALL,"template=%s rep=%d stime=%llu etime=%llu pid=%d ppid=%scomm=%s", 
+	struct audit_buffer *ab;
+	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
+	if (!ab)
+		return;		/* audit_panic has been called */
+	audit_log_format(ab, "arch=%x syscall=%d",
+			 context->arch, context->major);
+	if (context->personality != PER_LINUX)
+		audit_log_format(ab, " per=%lx", context->personality);
+	audit_log_format(ab, " template=%s rep=%d stime=%llu etime=%llu",
 		audit_template_starts[template_idx]->template_name,
-		ctx->current_template_pos[template_idx].observedCount,
-		ctx->current_template_pos[template_idx].firstTplStartTime,
-		ctx->current_template_pos[template_idx].lastTplEndTime,
-		ctx->pid,
-		ctx->ppid,
-		ctx->target_comm);
+		context->current_template_pos[template_idx].observedCount,
+		context->current_template_pos[template_idx].firstTplStartTime,
+		context->current_template_pos[template_idx].lastTplEndTime);
+	audit_log_task_info(ab, tsk);
+	audit_log_key(ab, context->filterkey);
+	audit_log_end(ab);
 }
 
 void flush_buffered_logs(struct audit_context *ctx)
@@ -1730,7 +1738,7 @@ static inline bool update_and_check_template_arrival_time(struct audit_context *
 	return match;
 }
 
-int audit_filter_template(struct audit_context *ctx)
+int audit_filter_template(struct audit_context *ctx, struct task_struct *tsk)
 {
 	//We should start off with a list of possible starting positions
 	//Each round we iterate through those and update the pointers
@@ -1773,7 +1781,7 @@ int audit_filter_template(struct audit_context *ctx)
 				reset_curr_template_pos(ctx);
 
 				if(!audit_macro_template_enabled){
-					log_template_end(ctx, template_idx);
+					log_template_end(ctx, tsk, template_idx);
 					reset_template_match_status(ctx);
 				}
 				
@@ -1786,7 +1794,7 @@ int audit_filter_template(struct audit_context *ctx)
 			//Need to check if current template was matched earlier
 			if(audit_macro_template_enabled && 
 				exp_curr_events[template_idx].observedCount > 0){
-				log_template_end(ctx, template_idx);
+				log_template_end(ctx, tsk, template_idx);
 			}
 			exp_curr_events[template_idx].current_tpl_entry = NULL;
 		}
@@ -1802,52 +1810,6 @@ int audit_filter_template(struct audit_context *ctx)
 
 	return VANILLA_AUDIT;
 }
-
-
-	/* if (match_audit_template_event(exp_curr_event, ctx)) {
-		//if we see a match at the end of the template, we want to finish things right there
-		if(has_template_ended(exp_curr_event)){
-			printk("template ended : %d %lu %d \n", ctx->major,ctx->argv[0],exp_curr_event->end_of_template);
-			log_template_end(ctx);
-			reset_curr_template_pos(ctx);
-		}
-		return true;
-	} */ //otherwise, we want to go check the next options
-	/* else {
-		struct audit_template_entry *next_event;
-		bool match_found = false;
-
-		//2 things can happen now, either we find a match or we don't
-		//in case we find a match, we don't need to do anything right now
-		//in case we don't find a match, we need to flush anything we found till now.
-		match_found = check_next_entries(ctx);
-
-		//if we are here, that means we have failed at matching the current and the next events
-		//this denotes that we have a mismatch, or the template has ended.
-		//if the template has ended, we can refer to the current_template_node to see if it occurs at the end of the template
-		//otherwise, we have a mismatch on our hands
-		if(!match_found){
-			//if we ended up here, it means that we haven't found a match for the current syscall
-			//in case our previous state was a valid end to a template, we need to log the end of the template there
-			if(has_template_ended(exp_curr_event)){
-				log_template_end(ctx);
-				reset_curr_template_pos(ctx);
-				match_found = check_next_entries(ctx);
-			}
-
-			if(!match_found){
-				//if out previous position wasn't a valid template ending, means we failed to find a match
-				//printk("template matching failed, need to reset ptr position\n");
-				flush_buffered_logs(ctx);
-				reset_curr_template_pos(ctx);
-			}
-		}
-
-		return match_found;
-
-	}
-	return false;	//default action should always be to say we couldn't find match in template -> lets things take the normal course.
-} */
 
 static int update_lsm_rule(struct audit_krule *r)
 {

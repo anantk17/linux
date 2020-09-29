@@ -403,7 +403,7 @@ extern u32 audit_sig_sid;
 
 extern int audit_filter(int msgtype, unsigned int listtype);
 
-extern int audit_filter_template(struct audit_context *ctx);
+extern int audit_filter_template(struct audit_context *ctx, struct task_struct *tsk);
 extern void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab);
 extern void free_buffered_logs(struct audit_context *ctx);
 
