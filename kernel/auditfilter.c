@@ -964,11 +964,12 @@ static void traverse_template_automaton(struct audit_template_entry **templates)
 		printk("Template %d started\n",i);
 		curr_entry = templates[i];
 		while(curr_entry!=NULL){
-			printk("curr_entry %px, next %px, syscall : %d, argv 0 : %lu, eot : %d, delta : %ld\n",
+			printk("curr_entry %px, next %px, syscall : %d, argv 0 : %lu, argv 2 : %lu eot : %d, delta : %ld\n",
 				curr_entry,
 				curr_entry->next,
 				curr_entry->syscallNumber,
 				curr_entry->argv[0],
+				curr_entry->argv[2],
 				curr_entry->end_of_template, 
 				curr_entry->delta);
 			curr_entry = curr_entry->next;
@@ -1571,7 +1572,7 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 	if(curr_event->syscallNumber == ctx->major){
 		switch(ctx->major){
 			case __NR_read: case __NR_write: case __NR_pread64:
-				//printk("checking syscall args: %lu %lu\n", curr_event->argv[0],ctx->argv[0]);
+				//printk("checking syscall args: %lu %lu %lu %lu\n", curr_event->argv[0],ctx->argv[0], curr_event->argv[2],ctx->argv[2]);
 				match = (curr_event->argv[0] == ctx->argv[0] && curr_event->argv[2] == ctx->argv[2]);
 				break;
 		}
@@ -1625,8 +1626,8 @@ void log_template_end(struct audit_context *context, struct task_struct *tsk, in
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
 	if (!ab)
 		return;		/* audit_panic has been called */
-	audit_log_format(ab, "arch=%x syscall=%d",
-			 context->arch, context->major);
+	audit_log_format(ab, "arch=%x ",
+			 context->arch);
 	if (context->personality != PER_LINUX)
 		audit_log_format(ab, " per=%lx", context->personality);
 	audit_log_format(ab, " template=%s rep=%d stime=%llu etime=%llu",
@@ -1729,12 +1730,12 @@ static inline bool update_and_check_template_arrival_time(struct audit_context *
 
 	//return((tpl_status->currentTplStartTime - tpl_status->previousTplStartTime) <= audit_template_starts[template_idx]->tpl_macro_delta);
 	bool match = (tpl_status->currentTplStartTime - tpl_status->previousTplStartTime) <= audit_template_starts[template_idx]->tpl_macro_delta;
-	if(!match)
+/* 	if(!match)
 		printk("Macro template arrival times not in range %s %llu %llu %llu\n", 
 			audit_template_starts[template_idx]->template_name,
 			tpl_status->previousTplStartTime,
 			tpl_status->currentTplStartTime,
-			audit_template_starts[template_idx]->tpl_macro_delta);
+			audit_template_starts[template_idx]->tpl_macro_delta); */
 	return match;
 }
 
