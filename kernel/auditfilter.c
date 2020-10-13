@@ -947,7 +947,9 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 	new_entry->delta = data.delta;
 
 	new_entry->end_of_template = false;
+	new_entry->tpl_duration = 0;
 	new_entry->next = NULL;
+	new_entry->tpl_macro_delta = 0;
 	
 	new_entry->template_name = NULL;
 	printk("audit template entry created \n");
@@ -957,11 +959,12 @@ static struct audit_template_entry* create_audit_template_entry(struct audit_tem
 }
 
 static void traverse_template_automaton(struct audit_template_entry **templates){
+	printk("Size of additional entries : %d %d %d %d %d\n",sizeof(struct audit_template_entry),sizeof(struct audit_template_entry*),sizeof(struct audit_template_match_status),sizeof(struct list_head),sizeof(u64));
 	struct audit_template_entry *curr_entry;
 	int i;
 	printk("Total templates : %d\n", audit_templates_loaded);
 	for(i=0;i < audit_templates_loaded; i++){
-		printk("Template %d started\n",i);
+		printk("Template %d started, duration : %lld\n",i,templates[i]->tpl_duration);
 		curr_entry = templates[i];
 		while(curr_entry!=NULL){
 			printk("curr_entry %px, next %px, syscall : %d, argv 0 : %lu, argv 2 : %lu eot : %d, delta : %ld\n",
@@ -1006,6 +1009,7 @@ static void add_audit_template(struct audit_template *template)
 	audit_template_starts[audit_templates_loaded]->template_name = kmalloc(sizeof(template->template_len + 1),GFP_KERNEL);
 	strncpy(audit_template_starts[audit_templates_loaded]->template_name, template->templateName, template->template_len + 1);
 	audit_template_starts[audit_templates_loaded]->tpl_macro_delta = template->tpl_macro_delta;
+	audit_template_starts[audit_templates_loaded]->tpl_duration = template->tpl_time;
 	printk("audit template added \n");
 	audit_templates_loaded++;
 	traverse_template_automaton(audit_template_starts);
@@ -1587,13 +1591,13 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 				curr_event->delta, 
 				ctx->prev_syscall_time, 
 				ctime);
-		if(match && !match_time){
-			/*printk("timing match failed! : %d %lu %llu %lu \n", 
+		/* if(match && !match_time){
+			printk("timing match failed! : %d %lu %llu %lu \n", 
 				ctx->major,
 				ctx->argv[0],
 				ctime-ctx->prev_syscall_time,
-				curr_event->delta);*/
-		}
+				curr_event->delta);
+		} */
 
 		if(match && match_time){
 			//printk("timing match passed : %d %lu %llu %lu \n", ctx->major,ctx->argv[0],ctime-ctx->prev_syscall_time,curr_event->delta);
@@ -1604,10 +1608,10 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 	return match && match_time;
 }
 
-void continue_template_match(struct audit_context *ctx, int template_idx)
+void update_template_match_status(struct audit_context *ctx, int template_idx)
 {
 	//We want to free logs that were buffered till now
-	free_buffered_logs(ctx);
+	//free_buffered_logs(ctx);
 	//get status handle
 	struct audit_template_match_status* tpl_status;
 	tpl_status = &ctx->current_template_pos[template_idx];
@@ -1739,6 +1743,14 @@ static inline bool update_and_check_template_arrival_time(struct audit_context *
 	return match;
 }
 
+static inline bool check_template_duration(struct audit_context *ctx, int template_idx)
+{
+	//printk("checking template duration %s %lld\n",audit_template_starts[template_idx]->template_name,audit_template_starts[template_idx]->tpl_duration);
+	return (audit_template_starts[template_idx]->tpl_duration == 0) || 
+		(ctx->current_template_pos[template_idx].lastTplEndTime - ctx->current_template_pos[template_idx].previousTplStartTime) 
+			<= audit_template_starts[template_idx]->tpl_duration;
+} 
+
 int audit_filter_template(struct audit_context *ctx, struct task_struct *tsk)
 {
 	//We should start off with a list of possible starting positions
@@ -1778,8 +1790,24 @@ int audit_filter_template(struct audit_context *ctx, struct task_struct *tsk)
 				//	exp_curr_events[template_idx].current_tpl_entry->end_of_template);
 				//
 				//If macro templates are enabled, we want to wait to match more reps before writing logs
-				continue_template_match(ctx, template_idx);
+				update_template_match_status(ctx, template_idx);
 				reset_curr_template_pos(ctx);
+
+				if(!check_template_duration(ctx,template_idx)){
+					//printk("template duration checks failed %lld %lld\n",audit_template_starts[template_idx]->tpl_duration,
+					//	ctx->current_template_pos[template_idx].lastTplEndTime - ctx->current_template_pos[template_idx].previousTplStartTime);
+					//skip matching this template and exit
+					matched = VANILLA_AUDIT;
+					//before exiting, we need to check if we need to write older compressed entries
+					if(audit_macro_template_enabled && 
+						exp_curr_events[template_idx].observedCount > 0){
+						log_template_end(ctx, tsk, template_idx);
+					}
+					break;
+				}else{
+					free_buffered_logs(ctx);
+				}
+
 
 				if(!audit_macro_template_enabled){
 					log_template_end(ctx, tsk, template_idx);

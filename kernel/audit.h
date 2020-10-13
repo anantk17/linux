@@ -126,6 +126,7 @@ struct audit_template_entry{
 	//need to add syscall related context here, probably syscall arguments
 	unsigned long argv[4]; //store syscall arguments
 	unsigned long delta;   //store delta wrt previous syscall, -1 if NA
+	u64 tpl_duration; //store template duration
 	
 	bool end_of_template;
 	char* template_name;
