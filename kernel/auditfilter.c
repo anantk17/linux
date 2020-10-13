@@ -1299,6 +1299,14 @@ void free_audit_template(struct audit_template* template){
 	kfree(template->templateName);
 }
 
+void free_audit_template_entry(struct audit_template_entry* entry){
+	if(!entry)
+		return;
+	kzfree(entry->template_name);
+	kzfree(entry);
+	return;
+}
+
 int audit_add_template(int type, int seq,void *data, size_t datasz){
 	int err = 0;
 	struct audit_template *template;
@@ -1311,6 +1319,25 @@ int audit_add_template(int type, int seq,void *data, size_t datasz){
 	free_audit_template(template);
 
 	return err;
+}
+
+int audit_del_templates(void)
+{
+	int i;
+	struct audit_template_entry *curr, *entry;
+	for(i=0;i < NUM_AUDIT_TEMPLATE_MAX;i++){
+		entry = audit_template_starts[i];
+		while(entry != NULL){
+			curr = entry;
+			entry = entry->next;
+			free_audit_template_entry(curr);
+		}
+		printk("Cleared audit_template_entry %d\n",i);
+		audit_template_starts[i] = NULL;
+	}
+	audit_templates_loaded = 0;
+	traverse_template_automaton(audit_template_starts);
+	return 0;
 }
 
 /**

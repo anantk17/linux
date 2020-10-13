@@ -162,6 +162,7 @@ extern int		    audit_update_lsm_rules(void);
 extern int audit_rule_change(int type, int seq, void *data, size_t datasz);
 extern int audit_list_rules_send(struct sk_buff *request_skb, int seq);
 extern int audit_add_template(int type, int seq, void *data, size_t datasz);
+extern int audit_del_templates(void);
 
 extern u32 audit_enabled;
 #else /* CONFIG_AUDIT */

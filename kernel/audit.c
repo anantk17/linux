@@ -1059,6 +1059,7 @@ static int audit_netlink_ok(struct sk_buff *skb, u16 msg_type)
 	case AUDIT_TRIM:
 	case AUDIT_MAKE_EQUIV:
 	case AUDIT_ADD_TEMPLATE:
+	case AUDIT_DEL_TEMPLATE:
 		/* Only support auditd and auditctl in initial pid namespace
 		 * for now. */
 		if (task_active_pid_ns(current) != &init_pid_ns)
@@ -1414,6 +1415,10 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		}
 		printk("message length %d\n",nlmsg_len(nlh));
 		err = audit_add_template(msg_type,seq,data,nlmsg_len(nlh));
+		break;
+	case AUDIT_DEL_TEMPLATE:
+		printk("template delete request received\n");
+		err = audit_del_templates();
 		break;
 	case AUDIT_LIST_RULES:
 		err = audit_list_rules_send(skb, seq);
