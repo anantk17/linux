@@ -1606,6 +1606,9 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 				//printk("checking syscall args: %lu %lu %lu %lu\n", curr_event->argv[0],ctx->argv[0], curr_event->argv[2],ctx->argv[2]);
 				match = (curr_event->argv[0] == ctx->argv[0] && curr_event->argv[2] == ctx->argv[2]);
 				break;
+			case __NR_getpid:
+				match = true;
+				break;
 		}
 		u64 ctime = get_audit_time_nanos(ctx->ctime);
 		/*match = match && 
