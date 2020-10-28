@@ -1608,6 +1608,7 @@ bool match_audit_template_event(struct audit_template_entry *curr_event,
 				break;
 			default:
 				match = true;
+				//printk("Matching syscall %d by default\n",ctx->major);
 				break;
 		}
 		u64 ctime = get_audit_time_nanos(ctx->ctime);
