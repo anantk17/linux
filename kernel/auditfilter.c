@@ -1597,14 +1597,32 @@ bool check_interarrival_time(u64 max_delta, u64 prev_syscall_time, u64 curr_sysc
 bool match_audit_template_event(struct audit_template_entry *curr_event,
 				struct audit_context *ctx)
 {
-	bool match = false, match_time = false;
+	bool match = false, match_time = false, inode_match = false;
+	struct audit_names *n;
 	//printk("checking for match %d, %d, %d\n",curr_event->syscallNumber, ctx->major,curr_event->syscallNumber == ctx->major);
 
 	if(curr_event->syscallNumber == ctx->major){
 		switch(ctx->major){
 			case __NR_read: case __NR_write: case __NR_pread64:
 				//printk("checking syscall args: %lu %lu %lu %lu\n", curr_event->argv[0],ctx->argv[0], curr_event->argv[2],ctx->argv[2]);
-				match = (curr_event->argv[0] == ctx->argv[0] && curr_event->argv[2] == ctx->argv[2]);
+				match = (curr_event->argv[0] == ctx->argv[0] && (curr_event->argv[2] == -1 || curr_event->argv[2] == ctx->argv[2]));
+				break;
+			case __NR_openat:		
+				list_for_each_entry(n, &ctx->names_list, list) {
+					if (n->hidden)
+						continue;
+					//matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+					if (n->ino != AUDIT_INO_UNSET){
+						//printk("inodes: %lu %lu\n", n->ino,curr_event->argv[1]);
+						inode_match = inode_match || (n->ino == curr_event->argv[1]);
+					}
+				}
+				//printk("checking syscall args: %lu %lu %lu %lu %lu %lu\n", curr_event->argv[0],ctx->argv[0], 
+				//	curr_event->argv[2],ctx->argv[2], curr_event->argv[3],ctx->argv[3]);
+				
+				match = (curr_event->argv[0] == ctx->argv[0] && curr_event->argv[2] == ctx->argv[2] 
+					 && curr_event->argv[3] == ctx->argv[3]) && inode_match;
+				
 				break;
 			default:
 				match = true;
@@ -1866,6 +1884,20 @@ int audit_filter_template(struct audit_context *ctx, struct task_struct *tsk)
 	//If we are here, that means that none of the templates have matched
 	flush_buffered_logs(ctx);
 	reset_template_match_status(ctx);
+	 template_idx = 0;
+	//Give one more chance to see if we can match the first entry in a template again
+	//Assumption that templates with one entry would have already matched earlier
+	for(;template_idx < audit_templates_loaded;template_idx++){
+		if (exp_curr_events[template_idx].current_tpl_entry != NULL && 
+			match_audit_template_event(exp_curr_events[template_idx].current_tpl_entry, ctx) &&
+			update_and_check_template_arrival_time(ctx, template_idx)){
+				matched = ELLIPSIS_MATCH;
+				exp_curr_events[template_idx].current_tpl_entry = exp_curr_events[template_idx].current_tpl_entry->next;
+			}
+	}
+	if(matched)
+		return ELLIPSIS_MATCH;
+		
 	//reset_curr_template_pos(ctx);
 
 	return VANILLA_AUDIT;

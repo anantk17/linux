@@ -2171,13 +2171,13 @@ void audit_copy_inode(struct audit_names *name, const struct dentry *dentry,
  * @call_panic: optional pointer to int that will be updated if secid fails
  */
 void audit_log_name(struct audit_context *context, struct audit_names *n,
-		    const struct path *path, int record_num, int *call_panic)
+		    const struct path *path, int record_num, int *call_panic, int toBuffer)
 {
-	struct audit_buffer *ab;
+	 struct audit_buffer *ab;
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_PATH);
 	if (!ab)
 		return;
-
+ 
 	audit_log_format(ab, "item=%d", record_num);
 
 	if (path)
@@ -2250,7 +2250,7 @@ void audit_log_name(struct audit_context *context, struct audit_names *n,
 	}
 
 	audit_log_fcaps(ab, n);
-	audit_log_end(ab);
+	process_audit_log(toBuffer, context, ab);
 }
 
 int audit_log_task_context(struct audit_buffer *ab)

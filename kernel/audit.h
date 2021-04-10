@@ -289,7 +289,7 @@ extern void audit_log_cap(struct audit_buffer *ab, char *prefix,
 			  kernel_cap_t *cap);
 extern void audit_log_name(struct audit_context *context,
 			   struct audit_names *n, const struct path *path,
-			   int record_num, int *call_panic);
+			   int record_num, int *call_panic, int toBuffer);
 
 extern int auditd_test_task(struct task_struct *task);
 
@@ -407,6 +407,7 @@ extern int audit_filter(int msgtype, unsigned int listtype);
 extern int audit_filter_template(struct audit_context *ctx, struct task_struct *tsk);
 extern void add_log_to_template(struct audit_context *ctx, struct audit_buffer* ab);
 extern void free_buffered_logs(struct audit_context *ctx);
+extern void process_audit_log(int matched, struct audit_context *context, struct audit_buffer* ab);
 
 #ifdef CONFIG_AUDITSYSCALL
 extern int audit_signal_info(int sig, struct task_struct *t);

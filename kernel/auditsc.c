@@ -1198,7 +1198,7 @@ out:
 	kfree(buf_head);
 }
 
-static inline void process_audit_log(int matched, struct audit_context *context, struct audit_buffer* ab){
+void process_audit_log(int matched, struct audit_context *context, struct audit_buffer* ab){
 	switch(matched){
 		case ELLIPSIS_MATCH:
 			add_log_to_template(context, ab);
@@ -1519,7 +1519,8 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	list_for_each_entry(n, &context->names_list, list) {
 		if (n->hidden)
 			continue;
-		audit_log_name(context, n, NULL, i++, &call_panic);
+		//matched ? add_log_to_template(context,ab) : audit_log_end(ab);
+		audit_log_name(context, n, NULL, i++, &call_panic, matched);
 	}
 
 	audit_log_proctitle(tsk, context,matched);
